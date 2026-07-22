@@ -4,8 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Telegram Web</title>
+
+    <!-- 📱 PWA Настройки -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#17212b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Telegram">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2111/2111646.png">
+
+    <!-- Подключение библиотек -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
     <style>
         :root {
             --bg-main: #0e1621;
@@ -112,6 +123,7 @@
 </head>
 <body>
 
+    <!-- 📞 МОДАЛКА ЗВОНКА -->
     <div id="call-modal" style="display:none;">
         <video id="remote-video" autoplay playsinline style="display:none;"></video>
         <video id="local-video" autoplay muted playsinline style="display:none;"></video>
@@ -130,6 +142,7 @@
         </div>
     </div>
 
+    <!-- Запись Кружков / ГС -->
     <div id="media-preview-modal" class="modal" style="display:none;">
         <div class="box" style="align-items:center;">
             <h2 id="rec-title">Запись...</h2>
@@ -142,6 +155,7 @@
         </div>
     </div>
 
+    <!-- Авторизация -->
     <div id="auth-screen" class="modal" style="display:none;">
         <div class="box">
             <h2>Вход в Telegram</h2>
@@ -154,6 +168,7 @@
         </div>
     </div>
 
+    <!-- Профиль -->
     <div id="profile-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeProfile();">
         <div class="box">
             <div class="profile-card">
@@ -175,6 +190,7 @@
         </div>
     </div>
 
+    <!-- Админка -->
     <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
             <h2>👑 Управление пользователями</h2>
@@ -221,6 +237,13 @@
     </div>
 
 <script>
+    // ⚙️ PWA Регистрация
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(()=>{});
+        });
+    }
+
     const SUPABASE_URL = "https://elygkutxqqesczazyrkq.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVseWdrdXR4cXFlc2N6YXp5cmtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTA3NDIsImV4cCI6MjEwMDI2Njc0Mn0.HtKdXas8bY-BoGlwxv6YtZGtEwI2WbCbzhYsHF5T6DM";
     const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -318,11 +341,9 @@
         listenCalls();
     }
 
-    // 🌐 НАДЁЖНАЯ ИНИЦИАЛИЗАЦИЯ PEERJS БЕЗ ОШИБКИ "undefined on"
     function initPeer() {
         if (!currentUser) return;
         const cleanPeerId = getCleanPeerId(currentUser.id);
-        
         peerReady = false;
         
         peer = new Peer(cleanPeerId, {
@@ -330,18 +351,12 @@
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' }
+                    { urls: 'stun:stun2.l.google.com:19302' }
                 ]
             }
         });
 
-        peer.on('open', (id) => {
-            peerReady = true;
-            console.log('PeerJS подключен. ID:', id);
-        });
-
+        peer.on('open', () => { peerReady = true; });
         peer.on('call', async (call) => {
             currentCall = call;
             if (localCallStream) {
@@ -349,17 +364,12 @@
                 call.on('stream', remoteStream => handleConnectedStream(remoteStream));
             }
         });
-
-        peer.on('error', (err) => {
-            console.warn('PeerJS ошибка:', err);
-        });
     }
 
     function getCleanPeerId(userId) {
         return 'user_' + userId.replace(/[^a-zA-Z0-9]/g, '');
     }
 
-    // 📞 ИНИЦИАЦИЯ ЗВОНКА
     async function initiateCall(isVideo = false) {
         if (!selectedUser) return;
         isCallVideo = isVideo;
@@ -436,9 +446,7 @@
                 currentCall = call;
 
                 if (call) {
-                    call.on('stream', remoteStream => {
-                        handleConnectedStream(remoteStream);
-                    });
+                    call.on('stream', remoteStream => handleConnectedStream(remoteStream));
                 }
             }
         } catch (e) {
