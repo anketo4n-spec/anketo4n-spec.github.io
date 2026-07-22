@@ -38,19 +38,19 @@
         .msg.my { background: #2563eb; align-self: flex-end; border-bottom-right-radius: 4px; }
         .msg.their { background: #334155; align-self: flex-start; border-bottom-left-radius: 4px; }
         
-        /* 🎥 ТЕЛЕГРАМ-КРУЖОК */
+        /* 🎥 КРУЖОК */
         .video-note { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; background: black; }
         .msg.video-msg { background: transparent !important; padding: 0 !important; }
 
-        /* Контейнер записи видео с кнопками и таймером по углам */
-        .video-container { position: relative; width: 200px; height: 200px; margin: 10px 0; }
+        /* Контейнер записи видео без лишних элементов */
+        .video-container { position: relative; width: 220px; height: 220px; margin: 0 auto; }
         #video-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #ef4444; background: black; transform: scaleX(-1); }
         
-        /* Снизу слева — Таймер */
-        #video-timer { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
+        /* Таймер снизу слева */
+        #video-timer { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.75); padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
         
-        /* Снизу справа — Кнопка звука */
-        #mute-btn { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); border: 1px solid #334155; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; padding: 0; }
+        /* Звук снизу справа */
+        #mute-btn { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.75); border: 1px solid #334155; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; padding: 0; color: white; }
         
         .input-area { padding: 12px 16px; background: #1e293b; display: flex; gap: 8px; border-top: 1px solid #334155; align-items: center; }
         input { padding: 11px 14px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; width: 100%; outline: none; font-size: 15px; }
@@ -59,6 +59,9 @@
         button:hover { background: #1d4ed8; }
         
         .video-rec-btn { background: #0284c7; padding: 11px 14px; border-radius: 10px; border: none; color: white; cursor: pointer; font-size: 16px; }
+        .video-rec-btn.recording { background: #ef4444; animation: pulse 1s infinite; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
         .back-btn { display: none; background: transparent; padding: 6px; font-size: 20px; color: #38bdf8; border: none; }
         .verified { color: #38bdf8; display: inline-flex; align-items: center; }
@@ -77,19 +80,12 @@
 </head>
 <body>
 
-    <!-- Экран Записи Видео (Превью) -->
-    <div id="video-preview-modal" class="modal" style="display:none;">
-        <div class="box" style="align-items:center;">
-            <h2>Запись кружка</h2>
-            <div class="video-container">
-                <video id="video-preview" autoplay muted playsinline></video>
-                <!-- Снизу слева -->
-                <div id="video-timer">0:30</div>
-                <!-- Снизу справа -->
-                <button id="mute-btn" onclick="toggleMute()" title="Включить/Выключить звук">🔊</button>
-            </div>
-            <button onclick="stopAndSendVideo()" style="background:#ef4444; width:100%;">🛑 Отправить</button>
-            <button onclick="cancelVideo()" style="background:#475569; width:100%;">Отмена</button>
+    <!-- Экран Записи Видео (Чистый экран без кнопок) -->
+    <div id="video-preview-modal" class="modal" style="display:none;" onclick="if(event.target===this) cancelVideo();">
+        <div class="video-container">
+            <video id="video-preview" autoplay muted playsinline></video>
+            <div id="video-timer">0:30</div>
+            <button id="mute-btn" onclick="toggleMute()" title="Включить/Выключить звук">🔊</button>
         </div>
     </div>
 
@@ -107,7 +103,7 @@
     </div>
 
     <!-- Модалка Профиля -->
-    <div id="profile-modal" class="modal" style="display:none;">
+    <div id="profile-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeProfile();">
         <div class="box">
             <div class="profile-card">
                 <div id="view-avatar-box"></div>
@@ -129,7 +125,7 @@
     </div>
 
     <!-- Модалка Админки -->
-    <div id="admin-modal" class="modal" style="display:none;">
+    <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
             <h2>👑 Панель Админа (@anketo)</h2>
             <div id="admin-user-list" style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
@@ -163,7 +159,7 @@
             </div>
             <div class="messages" id="messages"></div>
             <div class="input-area">
-                <button class="video-rec-btn" onclick="startVideoRecording()" title="Записать кружок">🎥</button>
+                <button id="video-btn" class="video-rec-btn" onclick="toggleVideoRecord()" title="Записать кружок">🎥</button>
                 <input type="text" id="msg-input" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') sendMsg()">
                 <button onclick="sendMsg()">></button>
             </div>
@@ -186,6 +182,7 @@
     let recordTimerInterval = null;
     let recordTimeLeft = 30;
     let isMuted = false;
+    let isRecording = false;
 
     window.onload = async () => {
         const { data: { session } } = await db.auth.getSession();
@@ -370,7 +367,15 @@
         loadActiveChats();
     }
 
-    // 🎥 ЗАПИСЬ И КНОПКИ ЗВУКА/ТАЙМЕРА
+    // 🎥 УПРАВЛЕНИЕ ЗАПИСЬЮ КРУЖКОВ Без кнопок
+    function toggleVideoRecord() {
+        if (!isRecording) {
+            startVideoRecording();
+        } else {
+            stopAndSendVideo();
+        }
+    }
+
     async function startVideoRecording() {
         if (!selectedUser) return alert("Сначала выберите чат!");
         
@@ -378,6 +383,11 @@
             mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 400, height: 400 }, audio: true });
             document.getElementById('video-preview').srcObject = mediaStream;
             document.getElementById('video-preview-modal').style.display = 'flex';
+
+            const recBtn = document.getElementById('video-btn');
+            recBtn.innerHTML = "🛑";
+            recBtn.classList.add('recording');
+            isRecording = true;
 
             videoChunks = [];
             recordTimeLeft = 30;
@@ -405,7 +415,6 @@
         }
     }
 
-    // Переключатель звука микрофона
     function toggleMute() {
         if (!mediaStream) return;
         isMuted = !isMuted;
@@ -446,6 +455,11 @@
             mediaStream.getTracks().forEach(track => track.stop());
         }
         document.getElementById('video-preview-modal').style.display = 'none';
+
+        const recBtn = document.getElementById('video-btn');
+        recBtn.innerHTML = "🎥";
+        recBtn.classList.remove('recording');
+        isRecording = false;
     }
 
     function listenMessages() {
