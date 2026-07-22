@@ -41,6 +41,16 @@
         /* 🎥 ТЕЛЕГРАМ-КРУЖОК */
         .video-note { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; background: black; }
         .msg.video-msg { background: transparent !important; padding: 0 !important; }
+
+        /* Контейнер записи видео с кнопками и таймером по углам */
+        .video-container { position: relative; width: 200px; height: 200px; margin: 10px 0; }
+        #video-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #ef4444; background: black; transform: scaleX(-1); }
+        
+        /* Снизу слева — Таймер */
+        #video-timer { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
+        
+        /* Снизу справа — Кнопка звука */
+        #mute-btn { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); border: 1px solid #334155; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; padding: 0; }
         
         .input-area { padding: 12px 16px; background: #1e293b; display: flex; gap: 8px; border-top: 1px solid #334155; align-items: center; }
         input { padding: 11px 14px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; width: 100%; outline: none; font-size: 15px; }
@@ -71,8 +81,13 @@
     <div id="video-preview-modal" class="modal" style="display:none;">
         <div class="box" style="align-items:center;">
             <h2>Запись кружка</h2>
-            <div id="video-timer" style="font-size:18px; font-weight:bold; color:#ef4444;">0:30</div>
-            <video id="video-preview" autoplay muted playsinline style="width:180px; height:180px; border-radius:50%; object-fit:cover; border:3px solid #ef4444; background:black; transform: scaleX(-1);"></video>
+            <div class="video-container">
+                <video id="video-preview" autoplay muted playsinline></video>
+                <!-- Снизу слева -->
+                <div id="video-timer">0:30</div>
+                <!-- Снизу справа -->
+                <button id="mute-btn" onclick="toggleMute()" title="Включить/Выключить звук">🔊</button>
+            </div>
             <button onclick="stopAndSendVideo()" style="background:#ef4444; width:100%;">🛑 Отправить</button>
             <button onclick="cancelVideo()" style="background:#475569; width:100%;">Отмена</button>
         </div>
@@ -164,12 +179,13 @@
     let currentProfile = null;
     let selectedUser = null;
 
-    // Переменные записи и таймера
+    // Переменные записи
     let mediaRecorder = null;
     let videoChunks = [];
     let mediaStream = null;
     let recordTimerInterval = null;
     let recordTimeLeft = 30;
+    let isMuted = false;
 
     window.onload = async () => {
         const { data: { session } } = await db.auth.getSession();
@@ -354,7 +370,7 @@
         loadActiveChats();
     }
 
-    // 🎥 ЗАПИСЬ И ОТПРАВКА КРУЖКОВ (С ЛИМИТОМ 30 СЕКУНД)
+    // 🎥 ЗАПИСЬ И КНОПКИ ЗВУКА/ТАЙМЕРА
     async function startVideoRecording() {
         if (!selectedUser) return alert("Сначала выберите чат!");
         
@@ -365,20 +381,20 @@
 
             videoChunks = [];
             recordTimeLeft = 30;
+            isMuted = false;
+            document.getElementById('mute-btn').textContent = "🔊";
             document.getElementById('video-timer').textContent = "0:30";
 
             mediaRecorder = new MediaRecorder(mediaStream);
             mediaRecorder.ondataavailable = e => videoChunks.push(e.data);
             mediaRecorder.start();
 
-            // Запуск таймера обратного отсчета
             clearInterval(recordTimerInterval);
             recordTimerInterval = setInterval(() => {
                 recordTimeLeft--;
                 const secStr = recordTimeLeft < 10 ? '0' + recordTimeLeft : recordTimeLeft;
                 document.getElementById('video-timer').textContent = `0:${secStr}`;
 
-                // Автоматическая остановка на 0 секунде
                 if (recordTimeLeft <= 0) {
                     stopAndSendVideo();
                 }
@@ -387,6 +403,14 @@
         } catch (err) {
             alert("Не удалось получить доступ к камере: " + err.message);
         }
+    }
+
+    // Переключатель звука микрофона
+    function toggleMute() {
+        if (!mediaStream) return;
+        isMuted = !isMuted;
+        mediaStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+        document.getElementById('mute-btn').textContent = isMuted ? "🔇" : "🔊";
     }
 
     async function stopAndSendVideo() {
