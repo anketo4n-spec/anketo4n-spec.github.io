@@ -3,102 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TG Messenger</title>
+    <title>Telegram Web</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
-        body { background: #0f172a; color: white; display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
-        
-        .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; }
-        .box { background: #1e293b; padding: 25px; border-radius: 16px; width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); border: 1px solid #334155; }
-        .box h2 { text-align: center; color: #38bdf8; font-size: 20px; }
-        
-        .profile-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .profile-avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; background: #0284c7; color: white; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: bold; border: 3px solid #38bdf8; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3); }
-        
-        #app { display: none; width: 100vw; height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
-        .sidebar { width: 340px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; height: 100%; flex-shrink: 0; transition: transform 0.25s ease; }
-        .sidebar-header { padding: 14px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
-        .search-box { padding: 10px 16px; border-bottom: 1px solid #334155; }
-        .user-list { flex: 1; overflow-y: auto; }
-        
-        .user-item { padding: 12px 16px; border-bottom: 1px solid #1e293b; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.15s; }
-        .user-item:hover, .user-item.active { background: #334155; }
-        
-        .avatar { width: 44px; height: 44px; border-radius: 50%; background: #0284c7; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; object-fit: cover; flex-shrink: 0; }
-        .user-info { display: flex; flex-direction: column; overflow: hidden; }
-        .user-info .name { font-weight: 600; color: #f8fafc; display: flex; align-items: center; gap: 4px; font-size: 15px; }
-        .user-info .sub { font-size: 13px; color: #94a3b8; }
-        
-        .chat-area { flex: 1; display: flex; flex-direction: column; background: #0f172a; height: 100%; transition: transform 0.25s ease; }
-        .chat-header { padding: 12px 16px; background: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 10px; height: 65px; }
-        .messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        
-        .msg { max-width: 75%; padding: 10px 14px; border-radius: 14px; word-break: break-word; line-height: 1.4; font-size: 15px; }
-        .msg.my { background: #2563eb; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .msg.their { background: #334155; align-self: flex-start; border-bottom-left-radius: 4px; }
-        
-        /* 🎥 КРУЖОК */
-        .video-note { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; background: black; }
-        .msg.video-msg { background: transparent !important; padding: 0 !important; }
+        :root {
+            --bg-main: #0e1621;
+            --bg-side: #17212b;
+            --bg-hover: #202b36;
+            --bg-active: #2b5278;
+            --primary: #5288c1;
+            --text-main: #f5f5f5;
+            --text-sub: #7f91a4;
+            --msg-out: #2b5278;
+            --msg-in: #182533;
+            --border: #101921;
+        }
 
-        /* Контейнер записи видео без лишних элементов */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { background: var(--bg-main); color: var(--text-main); display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+
+        .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; animation: fadeIn 0.15s ease; }
+        .box { background: var(--bg-side); padding: 24px; border-radius: 14px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); }
+        .box h2 { text-align: center; color: var(--text-main); font-size: 20px; font-weight: 600; }
+
+        .profile-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .profile-avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: bold; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+
+        #app { display: none; width: 100vw; height: 100vh; height: 100dvh; position: relative; overflow: hidden; }
+        .sidebar { width: 360px; background: var(--bg-side); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100%; flex-shrink: 0; transition: transform 0.2s ease; }
+        .sidebar-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; height: 60px; }
+        .search-box { padding: 8px 16px; border-bottom: 1px solid var(--border); }
+        .user-list { flex: 1; overflow-y: auto; }
+
+        .user-item { padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: background 0.15s; border-radius: 10px; margin: 2px 8px; }
+        .user-item:hover { background: var(--bg-hover); }
+        .user-item.active { background: var(--bg-active); }
+
+        .avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; object-fit: cover; flex-shrink: 0; }
+        .user-info { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+        .user-info .name { font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 4px; font-size: 15px; }
+        .user-info .sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
+
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-main); height: 100%; transition: transform 0.2s ease; }
+        .chat-header { padding: 10px 16px; background: var(--bg-side); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; height: 60px; }
+        
+        .messages { flex: 1; padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 0); background-size: 24px 24px; }
+
+        /* Сообщения */
+        .msg { max-width: 68%; padding: 8px 12px 6px 12px; border-radius: 12px; word-break: break-word; line-height: 1.4; font-size: 15px; position: relative; animation: msgPop 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; }
+        .msg.my { background: var(--msg-out); align-self: flex-end; border-bottom-right-radius: 3px; color: white; }
+        .msg.their { background: var(--msg-in); align-self: flex-start; border-bottom-left-radius: 3px; color: var(--text-main); }
+        .msg-time { font-size: 11px; color: rgba(255, 255, 255, 0.5); align-self: flex-end; margin-top: 2px; margin-left: 8px; float: right; }
+
+        /* 📹 КРУЖОК TELEGRAM */
+        .video-note { width: 220px; height: 220px; border-radius: 50%; object-fit: cover; background: black; cursor: pointer; border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.15s; }
+        .video-note:active { transform: scale(0.98); }
+        .msg.video-msg { background: transparent !important; padding: 0 !important; box-shadow: none; }
+
+        /* 🎙 КАСТОМНЫЙ ПЛЕЕР ГОЛОСОВЫХ TELEGRAM */
+        .tg-audio-player { display: flex; align-items: center; gap: 12px; width: 210px; padding: 4px 0; }
+        .tg-play-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--primary); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+        .tg-audio-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .tg-progress-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; position: relative; cursor: pointer; }
+        .tg-progress-fill { width: 0%; height: 100%; background: #38bdf8; border-radius: 2px; transition: width 0.1s linear; }
+        .tg-audio-timer { font-size: 11px; color: rgba(255,255,255,0.6); }
+
         .video-container { position: relative; width: 220px; height: 220px; margin: 0 auto; }
         #video-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #ef4444; background: black; transform: scaleX(-1); }
-        
-        /* Таймер снизу слева */
-        #video-timer { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.75); padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
-        
-        /* Звук снизу справа */
-        #mute-btn { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.75); border: 1px solid #334155; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; padding: 0; color: white; }
-        
-        .input-area { padding: 12px 16px; background: #1e293b; display: flex; gap: 8px; border-top: 1px solid #334155; align-items: center; }
-        input { padding: 11px 14px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; width: 100%; outline: none; font-size: 15px; }
-        input:focus { border-color: #38bdf8; }
-        button { padding: 11px 16px; background: #2563eb; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 14px; }
-        button:hover { background: #1d4ed8; }
-        
-        .video-rec-btn { background: #0284c7; padding: 11px 14px; border-radius: 10px; border: none; color: white; cursor: pointer; font-size: 16px; }
-        .video-rec-btn.recording { background: #ef4444; animation: pulse 1s infinite; }
+        #rec-timer { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
 
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        /* Поле ввода Telegram */
+        .input-area { padding: 10px 16px; background: var(--bg-side); display: flex; gap: 8px; border-top: 1px solid var(--border); align-items: center; }
+        input { padding: 12px 16px; border-radius: 22px; border: none; background: var(--bg-main); color: var(--text-main); width: 100%; outline: none; font-size: 15px; user-select: text; }
+        input::placeholder { color: var(--text-sub); }
+        
+        .action-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.15s, background 0.15s; }
+        .action-btn:active, .action-btn.recording { transform: scale(1.15); background: #ef4444; }
 
-        .back-btn { display: none; background: transparent; padding: 6px; font-size: 20px; color: #38bdf8; border: none; }
-        .verified { color: #38bdf8; display: inline-flex; align-items: center; }
+        .back-btn { display: none; background: transparent; padding: 6px; font-size: 20px; color: var(--primary); border: none; }
+        .verified { color: #38bdf8; font-size: 14px; }
         .admin-btn { background: #ef4444; }
-        .admin-btn:hover { background: #dc2626; }
-        
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes msgPop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
         @media (max-width: 768px) {
             .sidebar { width: 100%; position: absolute; inset: 0; z-index: 10; }
             .chat-area { width: 100%; position: absolute; inset: 0; z-index: 20; transform: translateX(100%); }
             #app.chat-open .chat-area { transform: translateX(0); }
             .back-btn { display: block; }
-            .msg { max-width: 85%; }
-            .video-note { width: 170px; height: 170px; }
+            .msg { max-width: 82%; }
+            .video-note { width: 180px; height: 180px; }
         }
     </style>
 </head>
 <body>
 
-    <!-- Экран Записи Видео (Чистый экран без кнопок) -->
-    <div id="video-preview-modal" class="modal" style="display:none;" onclick="if(event.target===this) cancelVideo();">
-        <div class="video-container">
-            <video id="video-preview" autoplay muted playsinline></video>
-            <div id="video-timer">0:30</div>
-            <button id="mute-btn" onclick="toggleMute()" title="Включить/Выключить звук">🔊</button>
+    <!-- Экран Записи -->
+    <div id="media-preview-modal" class="modal" style="display:none;">
+        <div class="box" style="align-items:center;">
+            <h2 id="rec-title">Запись...</h2>
+            <div id="video-box-wrap" class="video-container" style="display:none;">
+                <video id="video-preview" autoplay muted playsinline></video>
+            </div>
+            <div id="voice-viz-wrap" style="display:none; font-size:50px; margin:20px 0;">🎙</div>
+            <div id="rec-timer" style="font-weight:bold; color:#ef4444; font-size:16px;">0:30</div>
+            <small style="color:var(--text-sub);">Отпустите кнопку для отправки</small>
         </div>
     </div>
 
     <!-- Авторизация -->
-    <div id="auth-screen" class="modal">
+    <div id="auth-screen" class="modal" style="display:none;">
         <div class="box">
-            <h2>Вход в Messenger</h2>
+            <h2>Вход в Telegram</h2>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Пароль">
-            <input type="text" id="display_name" placeholder="Отображаемое имя">
+            <input type="text" id="display_name" placeholder="Имя">
             <input type="text" id="username" placeholder="Юзернейм (@username)">
-            <button onclick="register()">Зарегистрироваться</button>
-            <button onclick="login()" style="background:#475569;">Войти</button>
+            <button class="action-btn" style="width:100%; border-radius:12px;" onclick="register()">Создать аккаунт</button>
+            <button onclick="login()" style="background:transparent; color:var(--primary); border:none; cursor:pointer;">Войти по паролю</button>
         </div>
     </div>
 
@@ -108,28 +131,28 @@
             <div class="profile-card">
                 <div id="view-avatar-box"></div>
                 <h3 id="view-name" style="margin-top:5px; font-size:18px;"></h3>
-                <span id="view-username" style="color:#94a3b8; font-size:14px;"></span>
+                <span id="view-username" style="color:var(--text-sub); font-size:14px;"></span>
             </div>
 
             <div id="edit-profile-section" style="display:none; flex-direction:column; gap:10px; margin-top:10px;">
-                <hr style="border:0; border-top:1px solid #334155;">
-                <label style="font-size:12px; color:#94a3b8;">Изменить имя:</label>
+                <hr style="border:0; border-top:1px solid var(--border);">
+                <label style="font-size:12px; color:var(--text-sub);">Изменить имя:</label>
                 <input type="text" id="edit-display-name">
-                <label style="font-size:12px; color:#94a3b8;">Загрузить аватар (PNG / JPG):</label>
+                <label style="font-size:12px; color:var(--text-sub);">Загрузить аватар:</label>
                 <input type="file" id="avatar-file-input" accept="image/png, image/jpeg, image/jpg" style="font-size:12px;">
-                <button onclick="saveProfile()" style="margin-top:5px;">Сохранить изменения</button>
+                <button class="action-btn" style="width:100%; border-radius:12px;" onclick="saveProfile()">Сохранить</button>
             </div>
 
-            <button onclick="closeProfile()" style="background:#475569; margin-top:5px;">Закрыть</button>
+            <button onclick="closeProfile()" style="background:transparent; color:var(--text-sub); border:none; cursor:pointer;">Закрыть</button>
         </div>
     </div>
 
     <!-- Модалка Админки -->
     <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
-            <h2>👑 Панель Админа (@anketo)</h2>
+            <h2>👑 Управление пользователями</h2>
             <div id="admin-user-list" style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
-            <button onclick="closeAdmin()" style="background:#475569; margin-top:10px;">Закрыть</button>
+            <button onclick="closeAdmin()" style="background:transparent; color:var(--text-sub); border:none; cursor:pointer; margin-top:10px;">Закрыть</button>
         </div>
     </div>
 
@@ -137,14 +160,14 @@
     <div id="app">
         <div class="sidebar">
             <div class="sidebar-header">
-                <div onclick="openMyProfile()" style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                <div onclick="openMyProfile()" style="display:flex; align-items:center; gap:12px; cursor:pointer;">
                     <div id="my-avatar" class="avatar">?</div>
                     <span id="my-name" style="font-weight:600; font-size:15px;">Мой профиль</span>
                 </div>
-                <button id="admin-panel-btn" class="admin-btn" style="display:none; font-size:12px; padding:6px 10px;" onclick="openAdmin()">👑</button>
+                <button id="admin-panel-btn" class="admin-btn action-btn" style="display:none; font-size:12px; padding:6px 12px; border-radius:14px; width:auto; height:auto;" onclick="openAdmin()">👑 Админ</button>
             </div>
             <div class="search-box">
-                <input type="text" id="search" placeholder="Поиск по имени или @username..." oninput="onSearchInput()">
+                <input type="text" id="search" placeholder="Поиск..." oninput="onSearchInput()">
             </div>
             <div class="user-list" id="user-list"></div>
         </div>
@@ -152,16 +175,15 @@
         <div class="chat-area">
             <div class="chat-header">
                 <button class="back-btn" onclick="closeChatMobile()">←</button>
-                <div id="chat-header-info" onclick="openSelectedUserProfile()" style="display:flex; align-items:center; gap:10px; cursor:pointer; overflow:hidden;">
-                    <span id="chat-header-title" style="font-weight:600; color:#f8fafc; font-size:16px;">Выберите чат</span>
+                <div id="chat-header-info" onclick="openSelectedUserProfile()" style="display:flex; align-items:center; gap:12px; cursor:pointer; overflow:hidden;">
+                    <span id="chat-header-title" style="font-weight:600; color:var(--text-main); font-size:16px;">Выберите чат</span>
                 </div>
-                <button onclick="logout()" style="background:#475569; font-size:12px; padding:6px 10px; margin-left:auto;">Выйти</button>
+                <button onclick="logout()" style="background:transparent; color:var(--text-sub); font-size:13px; border:none; cursor:pointer; margin-left:auto;">Выйти</button>
             </div>
             <div class="messages" id="messages"></div>
             <div class="input-area">
-                <button id="video-btn" class="video-rec-btn" onclick="toggleVideoRecord()" title="Записать кружок">🎥</button>
-                <input type="text" id="msg-input" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') sendMsg()">
-                <button onclick="sendMsg()">></button>
+                <input type="text" id="msg-input" placeholder="Написать сообщение..." oninput="onInputChange()" onkeypress="if(event.key==='Enter') sendMsg()">
+                <button id="tg-action-btn" class="action-btn">🎙</button>
             </div>
         </div>
     </div>
@@ -175,25 +197,35 @@
     let currentProfile = null;
     let selectedUser = null;
 
-    // Переменные записи
+    let currentMediaMode = 'voice'; 
     let mediaRecorder = null;
-    let videoChunks = [];
+    let mediaChunks = [];
     let mediaStream = null;
     let recordTimerInterval = null;
     let recordTimeLeft = 30;
-    let isMuted = false;
-    let isRecording = false;
+    let isHoldRecording = false;
+    let pressTimer = null;
 
+    // ⚡ БЫСТРАЯ ПРОВЕРКА СЕССИИ (Без подмигивания экрана входа)
     window.onload = async () => {
+        setupTgButtonEvents();
         const { data: { session } } = await db.auth.getSession();
         if (session) {
             currentUser = session.user;
             await loadProfile();
             showApp();
+        } else {
+            document.getElementById('auth-screen').style.display = 'flex';
         }
     };
 
     function cleanUsername(raw) { return raw.replace(/@+/g, '').trim().toLowerCase(); }
+
+    function formatTime(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
 
     function renderAvatarHTML(profile, isBig = false) {
         const name = profile.display_name || profile.username || 'U';
@@ -242,7 +274,7 @@
         }]);
 
         if (profileError) return alert("Ошибка: " + profileError.message);
-        alert("Успешно! Нажмите 'Войти'.");
+        alert("Успешно! Теперь нажмите 'Войти по паролю'.");
     }
 
     async function login() {
@@ -276,7 +308,7 @@
         }
 
         if (activeUserIds.size === 0) {
-            document.getElementById('user-list').innerHTML = '<div style="padding:20px; color:#94a3b8; text-align:center; font-size:14px;">Чатов нет.<br>Найдите собеседника!</div>';
+            document.getElementById('user-list').innerHTML = '<div style="padding:20px; color:var(--text-sub); text-align:center; font-size:14px;">Чатов нет.<br>Найдите собеседника!</div>';
             return;
         }
 
@@ -321,7 +353,7 @@
     async function selectChat(id, displayName, username, avatarUrl, isVerified) {
         selectedUser = { id, displayName, username, avatarUrl, isVerified };
         const verifiedTag = isVerified ? '<span class="verified">✔</span>' : '';
-        document.getElementById('chat-header-title').innerHTML = `${displayName} ${verifiedTag} <br><small style="color:#94a3b8; font-weight:normal;">@${username}</small>`;
+        document.getElementById('chat-header-title').innerHTML = `${displayName} ${verifiedTag} <br><small style="color:var(--text-sub); font-weight:normal;">@${username}</small>`;
         document.getElementById('app').classList.add('chat-open');
         loadMessages();
     }
@@ -338,135 +370,302 @@
         const box = document.getElementById('messages');
         box.innerHTML = '';
         if (data) {
-            data.forEach(m => {
-                const isMy = m.sender_id === currentUser.id;
-                if (m.text.startsWith('[video]:')) {
-                    const videoUrl = m.text.replace('[video]:', '');
-                    box.innerHTML += `
-                        <div class="msg ${isMy ? 'my' : 'their'} video-msg">
-                            <video class="video-note" src="${videoUrl}" controls playsinline></video>
-                        </div>`;
-                } else {
-                    box.innerHTML += `<div class="msg ${isMy ? 'my' : 'their'}">${m.text}</div>`;
-                }
-            });
+            data.forEach(m => renderSingleMessage(m, false));
         }
         box.scrollTop = box.scrollHeight;
     }
 
+    // ⚡ РЕНДЕР ОДНОГО СООБЩЕНИЯ (Мгновенное появление)
+    function renderSingleMessage(m, isNew = true) {
+        const box = document.getElementById('messages');
+        const isMy = m.sender_id === currentUser.id;
+        const timeStr = formatTime(m.created_at || new Date().toISOString());
+
+        let html = '';
+        if (m.text.startsWith('[video]:')) {
+            const videoUrl = m.text.replace('[video]:', '');
+            html = `
+                <div class="msg ${isMy ? 'my' : 'their'} video-msg">
+                    <video class="video-note" src="${videoUrl}" playsinline onclick="playVideoNote(this)"></video>
+                </div>`;
+        } else if (m.text.startsWith('[audio]:')) {
+            const audioUrl = m.text.replace('[audio]:', '');
+            const audioId = 'aud_' + Math.random().toString(36).substr(2, 9);
+            html = `
+                <div class="msg ${isMy ? 'my' : 'their'}">
+                    <div class="tg-audio-player">
+                        <button class="tg-play-btn" onclick="toggleAudio('${audioId}', this)">▶</button>
+                        <div class="tg-audio-info">
+                            <div class="tg-progress-bar" onclick="seekAudio(event, '${audioId}')">
+                                <div id="fill_${audioId}" class="tg-progress-fill"></div>
+                            </div>
+                            <span id="time_${audioId}" class="tg-audio-timer">0:00</span>
+                        </div>
+                        <audio id="${audioId}" src="${audioUrl}" ontimeupdate="updateAudioProgress('${audioId}')" onended="resetAudioBtn('${audioId}')"></audio>
+                    </div>
+                    <span class="msg-time">${timeStr}</span>
+                </div>`;
+        } else {
+            html = `
+                <div class="msg ${isMy ? 'my' : 'their'}">
+                    <span>${m.text}</span>
+                    <span class="msg-time">${timeStr}</span>
+                </div>`;
+        }
+
+        box.innerHTML += html;
+        if (isNew) box.scrollTop = box.scrollHeight;
+    }
+
+    // 🎵 УПРАВЛЕНИЕ КАСТОМНЫМ АУДИОПЛЕЕРОМ
+    function toggleAudio(id, btn) {
+        const audio = document.getElementById(id);
+        if (!audio) return;
+
+        document.querySelectorAll('audio').forEach(a => {
+            if (a !== audio) { a.pause(); }
+        });
+        document.querySelectorAll('.tg-play-btn').forEach(b => {
+            if (b !== btn) { b.textContent = '▶'; }
+        });
+
+        if (audio.paused) {
+            audio.play();
+            btn.textContent = '❚❚';
+        } else {
+            audio.pause();
+            btn.textContent = '▶';
+        }
+    }
+
+    function updateAudioProgress(id) {
+        const audio = document.getElementById(id);
+        const fill = document.getElementById('fill_' + id);
+        const timer = document.getElementById('time_' + id);
+        if (!audio || !fill) return;
+
+        const pct = (audio.currentTime / audio.duration) * 100;
+        fill.style.width = (pct || 0) + '%';
+
+        const mins = Math.floor(audio.currentTime / 60);
+        const secs = Math.floor(audio.currentTime % 60);
+        timer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    function resetAudioBtn(id) {
+        const audio = document.getElementById(id);
+        const btn = audio.parentElement.querySelector('.tg-play-btn');
+        if (btn) btn.textContent = '▶';
+        const fill = document.getElementById('fill_' + id);
+        if (fill) fill.style.width = '0%';
+    }
+
+    function seekAudio(e, id) {
+        const audio = document.getElementById(id);
+        const bar = e.currentTarget;
+        if (!audio || !bar) return;
+
+        const rect = bar.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = pos * audio.duration;
+    }
+
+    function playVideoNote(targetVideo) {
+        const allVideos = document.querySelectorAll('.video-note');
+        allVideos.forEach(v => {
+            if (v !== targetVideo) { v.pause(); v.currentTime = 0; }
+        });
+
+        if (targetVideo.paused) { targetVideo.play(); } else { targetVideo.pause(); }
+    }
+
+    // ⚡ МГНОВЕННАЯ ОТПРАВКА СООБЩЕНИЯ
     async function sendMsg() {
         const input = document.getElementById('msg-input');
-        if (!input.value.trim() || !selectedUser) return;
+        const text = input.value.trim();
+        if (!text || !selectedUser) return;
+
+        input.value = '';
+        onInputChange();
+
+        const msgObj = {
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            text: text,
+            created_at: new Date().toISOString()
+        };
+
+        renderSingleMessage(msgObj, true);
 
         await db.from('messages').insert([{
             sender_id: currentUser.id,
             receiver_id: selectedUser.id,
-            text: input.value
+            text: text
         }]);
-        input.value = '';
+
         loadActiveChats();
     }
 
-    // 🎥 УПРАВЛЕНИЕ ЗАПИСЬЮ КРУЖКОВ Без кнопок
-    function toggleVideoRecord() {
-        if (!isRecording) {
-            startVideoRecording();
+    function onInputChange() {
+        const text = document.getElementById('msg-input').value.trim();
+        const btn = document.getElementById('tg-action-btn');
+
+        if (text.length > 0) {
+            btn.textContent = "➤";
         } else {
-            stopAndSendVideo();
+            btn.textContent = currentMediaMode === 'voice' ? "🎙" : "📹";
         }
     }
 
-    async function startVideoRecording() {
+    function setupTgButtonEvents() {
+        const btn = document.getElementById('tg-action-btn');
+        btn.addEventListener('mousedown', handlePressStart);
+        window.addEventListener('mouseup', handlePressEnd);
+
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); handlePressStart(); });
+        window.addEventListener('touchend', handlePressEnd);
+    }
+
+    function handlePressStart() {
+        const text = document.getElementById('msg-input').value.trim();
+        if (text.length > 0) {
+            sendMsg();
+            return;
+        }
+
+        pressTimer = setTimeout(() => {
+            isHoldRecording = true;
+            startMediaRecord(currentMediaMode);
+        }, 200);
+    }
+
+    function handlePressEnd() {
+        clearTimeout(pressTimer);
+
+        if (isHoldRecording) {
+            stopAndSendMedia();
+            isHoldRecording = false;
+        } else {
+            const text = document.getElementById('msg-input').value.trim();
+            if (text.length === 0) {
+                currentMediaMode = currentMediaMode === 'voice' ? 'video' : 'voice';
+                onInputChange();
+            }
+        }
+    }
+
+    // 🎥 / 🎙 ОПТИМИЗИРОВАННАЯ ЗАПИСЬ (Без ошибок камеры)
+    async function startMediaRecord(type) {
         if (!selectedUser) return alert("Сначала выберите чат!");
-        
+
         try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 400, height: 400 }, audio: true });
-            document.getElementById('video-preview').srcObject = mediaStream;
-            document.getElementById('video-preview-modal').style.display = 'flex';
+            cleanupMediaStream(); // Очищаем старые потоки
 
-            const recBtn = document.getElementById('video-btn');
-            recBtn.innerHTML = "🛑";
-            recBtn.classList.add('recording');
-            isRecording = true;
+            const constraints = type === 'video' 
+                ? { video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: true }
+                : { audio: true };
 
-            videoChunks = [];
+            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            if (type === 'video') {
+                document.getElementById('video-box-wrap').style.display = 'block';
+                document.getElementById('voice-viz-wrap').style.display = 'none';
+                document.getElementById('video-preview').srcObject = mediaStream;
+                document.getElementById('rec-title').textContent = "Запись кружка";
+            } else {
+                document.getElementById('video-box-wrap').style.display = 'none';
+                document.getElementById('voice-viz-wrap').style.display = 'block';
+                document.getElementById('rec-title').textContent = "Запись голосового";
+            }
+
+            document.getElementById('media-preview-modal').style.display = 'flex';
+            document.getElementById('tg-action-btn').classList.add('recording');
+
+            mediaChunks = [];
             recordTimeLeft = 30;
-            isMuted = false;
-            document.getElementById('mute-btn').textContent = "🔊";
-            document.getElementById('video-timer').textContent = "0:30";
+            document.getElementById('rec-timer').textContent = "0:30";
 
             mediaRecorder = new MediaRecorder(mediaStream);
-            mediaRecorder.ondataavailable = e => videoChunks.push(e.data);
+            mediaRecorder.ondataavailable = e => mediaChunks.push(e.data);
             mediaRecorder.start();
 
             clearInterval(recordTimerInterval);
             recordTimerInterval = setInterval(() => {
                 recordTimeLeft--;
                 const secStr = recordTimeLeft < 10 ? '0' + recordTimeLeft : recordTimeLeft;
-                document.getElementById('video-timer').textContent = `0:${secStr}`;
+                document.getElementById('rec-timer').textContent = `0:${secStr}`;
 
                 if (recordTimeLeft <= 0) {
-                    stopAndSendVideo();
+                    stopAndSendMedia();
                 }
             }, 1000);
 
         } catch (err) {
-            alert("Не удалось получить доступ к камере: " + err.message);
+            cleanupMediaStream();
+            alert("Не удалось запустить запись: " + err.message);
         }
     }
 
-    function toggleMute() {
-        if (!mediaStream) return;
-        isMuted = !isMuted;
-        mediaStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-        document.getElementById('mute-btn').textContent = isMuted ? "🔇" : "🔊";
-    }
-
-    async function stopAndSendVideo() {
+    async function stopAndSendMedia() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-        
         clearInterval(recordTimerInterval);
 
         mediaRecorder.onstop = async () => {
-            const blob = new Blob(videoChunks, { type: 'video/webm' });
-            const fileName = `note_${Date.now()}.webm`;
+            const isVideo = currentMediaMode === 'video';
+            const mimeType = isVideo ? 'video/webm' : 'audio/webm';
+            const bucket = isVideo ? 'videos' : 'voice';
+            const prefix = isVideo ? '[video]:' : '[audio]:';
 
-            const { data, error } = await db.storage.from('videos').upload(fileName, blob);
-            if (error) return alert("Ошибка загрузки видео: " + error.message);
+            const blob = new Blob(mediaChunks, { type: mimeType });
+            const fileName = `rec_${Date.now()}.webm`;
 
-            const { data: { publicUrl } } = db.storage.from('videos').getPublicUrl(fileName);
+            // Отображаем локальное видео/аудио мгновенно
+            const localUrl = URL.createObjectURL(blob);
+            renderSingleMessage({
+                sender_id: currentUser.id,
+                receiver_id: selectedUser.id,
+                text: `${prefix}${localUrl}`,
+                created_at: new Date().toISOString()
+            }, true);
+
+            cancelMedia();
+
+            const { data, error } = await db.storage.from(bucket).upload(fileName, blob);
+            if (error) return console.error("Ошибка загрузки:", error);
+
+            const { data: { publicUrl } } = db.storage.from(bucket).getPublicUrl(fileName);
 
             await db.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: selectedUser.id,
-                text: `[video]:${publicUrl}`
+                text: `${prefix}${publicUrl}`
             }]);
 
-            cancelVideo();
             loadActiveChats();
         };
 
         mediaRecorder.stop();
     }
 
-    function cancelVideo() {
-        clearInterval(recordTimerInterval);
+    function cleanupMediaStream() {
         if (mediaStream) {
             mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
         }
-        document.getElementById('video-preview-modal').style.display = 'none';
+    }
 
-        const recBtn = document.getElementById('video-btn');
-        recBtn.innerHTML = "🎥";
-        recBtn.classList.remove('recording');
-        isRecording = false;
+    function cancelMedia() {
+        clearInterval(recordTimerInterval);
+        cleanupMediaStream();
+        document.getElementById('media-preview-modal').style.display = 'none';
+        document.getElementById('tg-action-btn').classList.remove('recording');
     }
 
     function listenMessages() {
         db.channel('public:messages')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                if (selectedUser && (payload.new.sender_id === selectedUser.id || payload.new.receiver_id === selectedUser.id)) {
-                    loadMessages();
+                if (selectedUser && payload.new.sender_id === selectedUser.id) {
+                    renderSingleMessage(payload.new, true);
                 }
                 loadActiveChats();
             })
@@ -531,11 +730,11 @@
         if (data) {
             data.forEach(u => {
                 list.innerHTML += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:10px; border-radius:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-main); padding:10px; border-radius:8px;">
                         <span>@${u.username} ${u.is_verified ? '✔' : ''}</span>
                         <div style="display:flex; gap:5px;">
-                            <button style="font-size:11px; padding:4px 8px;" onclick="toggleVerify('${u.id}', ${!u.is_verified})">${u.is_verified ? 'Снять ✔' : 'Дать ✔'}</button>
-                            <button class="admin-btn" style="font-size:11px; padding:4px 8px;" onclick="deleteUser('${u.id}')">🗑</button>
+                            <button class="action-btn" style="font-size:11px; padding:4px 8px; border-radius:8px; width:auto; height:auto;" onclick="toggleVerify('${u.id}', ${!u.is_verified})">${u.is_verified ? 'Снять ✔' : 'Дать ✔'}</button>
+                            <button class="admin-btn action-btn" style="font-size:11px; padding:4px 8px; border-radius:8px; width:auto; height:auto;" onclick="deleteUser('${u.id}')">🗑</button>
                         </div>
                     </div>`;
             });
