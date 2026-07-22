@@ -58,7 +58,7 @@
         .video-note:active { transform: scale(0.98); }
         .msg.video-msg { background: transparent !important; padding: 0 !important; box-shadow: none; }
 
-        /* 🎙 КАСТОМНЫЙ ПЛЕЕР С ТОЧНОЙ ДЛИТЕЛЬНОСТЬЮ */
+        /* 🎙 КАСТОМНЫЙ ПЛЕЕР ГОЛОСОВЫХ */
         .tg-audio-player { display: flex; align-items: center; gap: 12px; width: 210px; padding: 4px 0; }
         .tg-play-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--primary); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; flex-shrink: 0; }
         .tg-audio-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
@@ -195,9 +195,15 @@
     let mediaStream = null;
     let recordTimerInterval = null;
     let recordTimeLeft = 30;
-    let actualRecordedSecs = 0; // Точное записанное время
+    let actualRecordedSecs = 0;
     let isHoldRecording = false;
     let pressTimer = null;
+
+    // Переменные WebAudio API для чистого WAV без багов длительности
+    let audioCtx = null;
+    let audioProcessor = null;
+    let pcmBuffers = [];
+    let sampleRate = 44100;
 
     window.onload = async () => {
         setupTgButtonEvents();
@@ -386,7 +392,6 @@
                     <video class="video-note" src="${videoUrl}" playsinline onclick="playVideoNote(this)"></video>
                 </div>`;
         } else if (m.text.startsWith('[audio]:')) {
-            // Разделяем ссылку на файл и точную сохраненную длительность
             const parts = m.text.replace('[audio]:', '').split('|dur:');
             const audioUrl = parts[0];
             const storedDur = parts[1] ? parseInt(parts[1]) : 0;
@@ -419,7 +424,6 @@
         if (isNew) box.scrollTop = box.scrollHeight;
     }
 
-    // 🎵 УПРАВЛЕНИЕ АУДИОПЛЕЕРОМ В СТИЛЕ TELEGRAM
     function initAudioDuration(id) {
         const audio = document.getElementById(id);
         const timer = document.getElementById('time_' + id);
@@ -455,8 +459,7 @@
         const timer = document.getElementById('time_' + id);
         if (!audio || !fill) return;
 
-        // Корректно высчитываем прогресс закрашивания полоски
-        const dur = audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) 
+        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration))
             ? audio.duration 
             : parseInt(timer.getAttribute('data-duration') || '1');
 
@@ -481,7 +484,7 @@
         const timer = document.getElementById('time_' + id);
         if (!audio || !bar) return;
 
-        const dur = audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) 
+        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) 
             ? audio.duration 
             : parseInt(timer.getAttribute('data-duration') || '0');
 
@@ -575,7 +578,52 @@
         }
     }
 
-    // 🎥 / 🎙 ЗАПИСЬ С ТОЧНЫМ ПОДСЧЕТОМ ДЛИТЕЛЬНОСТИ
+    // 🎙 СБОРКА ИДЕАЛЬНОГО WAV ФАЙЛА
+    function encodeWAV(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+
+        /* RIFF identifier */
+        writeString(view, 0, 'RIFF');
+        /* RIFF chunk length */
+        view.setUint32(4, 36 + samples.length * 2, true);
+        /* RIFF type */
+        writeString(view, 8, 'WAVE');
+        /* format chunk identifier */
+        writeString(view, 12, 'fmt ');
+        /* format chunk length */
+        view.setUint32(16, 16, true);
+        /* sample format (raw) */
+        view.setUint16(20, 1, true);
+        /* channel count (mono) */
+        view.setUint16(22, 1, true);
+        /* sample rate */
+        view.setUint32(24, sampleRate, true);
+        /* byte rate */
+        view.setUint32(28, sampleRate * 2, true);
+        /* block align */
+        view.setUint16(32, 2, true);
+        /* bits per sample */
+        view.setUint16(34, 16, true);
+        /* data chunk identifier */
+        writeString(view, 36, 'data');
+        /* data chunk length */
+        view.setUint32(40, samples.length * 2, true);
+
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++, offset += 2) {
+            const s = Math.max(-1, Math.min(1, samples[i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return buffer;
+    }
+
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
     async function startMediaRecord(type) {
         if (!selectedUser) return alert("Сначала выберите чат!");
 
@@ -593,28 +641,44 @@
                 document.getElementById('voice-viz-wrap').style.display = 'none';
                 document.getElementById('video-preview').srcObject = mediaStream;
                 document.getElementById('rec-title').textContent = "Запись кружка";
+
+                mediaChunks = [];
+                mediaRecorder = new MediaRecorder(mediaStream);
+                mediaRecorder.ondataavailable = e => mediaChunks.push(e.data);
+                mediaRecorder.start();
             } else {
                 document.getElementById('video-box-wrap').style.display = 'none';
                 document.getElementById('voice-viz-wrap').style.display = 'block';
                 document.getElementById('rec-title').textContent = "Запись голосового";
+
+                // Подключаем кастомную запись в чистый WAV через WebAudio
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                sampleRate = audioCtx.sampleRate;
+                const source = audioCtx.createMediaStreamSource(mediaStream);
+                audioProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+                pcmBuffers = [];
+
+                audioProcessor.onaudioprocess = (e) => {
+                    if (!isHoldRecording) return;
+                    const input = e.inputBuffer.getChannelData(0);
+                    pcmBuffers.push(new Float32Array(input));
+                };
+
+                source.connect(audioProcessor);
+                audioProcessor.connect(audioCtx.destination);
             }
 
             document.getElementById('media-preview-modal').style.display = 'flex';
             document.getElementById('tg-action-btn').classList.add('recording');
 
-            mediaChunks = [];
             recordTimeLeft = 30;
             actualRecordedSecs = 0;
             document.getElementById('rec-timer').textContent = "0:30";
 
-            mediaRecorder = new MediaRecorder(mediaStream);
-            mediaRecorder.ondataavailable = e => mediaChunks.push(e.data);
-            mediaRecorder.start();
-
             clearInterval(recordTimerInterval);
             recordTimerInterval = setInterval(() => {
                 recordTimeLeft--;
-                actualRecordedSecs++; // Фиксируем каждую записанную секунду
+                actualRecordedSecs++;
                 const secStr = recordTimeLeft < 10 ? '0' + recordTimeLeft : recordTimeLeft;
                 document.getElementById('rec-timer').textContent = `0:${secStr}`;
 
@@ -630,48 +694,68 @@
     }
 
     async function stopAndSendMedia() {
-        if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
         clearInterval(recordTimerInterval);
+        const durationInSecs = Math.max(1, actualRecordedSecs);
 
-        const durationInSecs = Math.max(1, actualRecordedSecs); // Избегаем 0 секунд
+        if (currentMediaMode === 'video') {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+            mediaRecorder.onstop = async () => {
+                const blob = new Blob(mediaChunks, { type: 'video/webm' });
+                await uploadAndSendMedia(blob, 'video/webm', 'videos', '[video]:', '');
+            };
+            mediaRecorder.stop();
+        } else {
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
 
-        mediaRecorder.onstop = async () => {
-            const isVideo = currentMediaMode === 'video';
-            const mimeType = isVideo ? 'video/webm' : 'audio/webm';
-            const bucket = isVideo ? 'videos' : 'voice';
-            
-            // Если голосовое — прикрепляем к тексту точный параметр длительности |dur:X
-            const prefix = isVideo ? '[video]:' : `[audio]:`;
-            const durationSuffix = isVideo ? '' : `|dur:${durationInSecs}`;
+            let totalLen = 0;
+            for (let b of pcmBuffers) totalLen += b.length;
+            const flatSamples = new Float32Array(totalLen);
+            let offset = 0;
+            for (let b of pcmBuffers) {
+                flatSamples.set(b, offset);
+                offset += b.length;
+            }
 
-            const blob = new Blob(mediaChunks, { type: mimeType });
-            const fileName = `rec_${Date.now()}.webm`;
+            const wavBuffer = encodeWAV(flatSamples, sampleRate);
+            const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+            await uploadAndSendMedia(blob, 'audio/wav', 'voice', '[audio]:', `|dur:${durationInSecs}`);
+        }
+    }
 
-            const localUrl = URL.createObjectURL(blob);
-            renderSingleMessage({
-                sender_id: currentUser.id,
-                receiver_id: selectedUser.id,
-                text: `${prefix}${localUrl}${durationSuffix}`,
-                created_at: new Date().toISOString()
-            }, true);
+    async function uploadAndSendMedia(blob, mimeType, bucket, prefix, durationSuffix) {
+        const fileName = `rec_${Date.now()}.${bucket === 'videos' ? 'webm' : 'wav'}`;
 
-            cancelMedia();
+        const localUrl = URL.createObjectURL(blob);
+        renderSingleMessage({
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            text: `${prefix}${localUrl}${durationSuffix}`,
+            created_at: new Date().toISOString()
+        }, true);
 
-            const { data, error } = await db.storage.from(bucket).upload(fileName, blob);
-            if (error) return console.error("Ошибка загрузки:", error);
+        cancelMedia();
 
-            const { data: { publicUrl } } = db.storage.from(bucket).getPublicUrl(fileName);
+        const { data, error } = await db.storage.from(bucket).upload(fileName, blob, {
+            contentType: mimeType
+        });
+        if (error) return console.error("Ошибка загрузки:", error);
 
-            await db.from('messages').insert([{
-                sender_id: currentUser.id,
-                receiver_id: selectedUser.id,
-                text: `${prefix}${publicUrl}${durationSuffix}`
-            }]);
+        const { data: { publicUrl } } = db.storage.from(bucket).getPublicUrl(fileName);
 
-            loadActiveChats();
-        };
+        await db.from('messages').insert([{
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            text: `${prefix}${publicUrl}${durationSuffix}`
+        }]);
 
-        mediaRecorder.stop();
+        loadActiveChats();
     }
 
     function cleanupMediaStream() {
