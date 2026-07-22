@@ -15,15 +15,15 @@
         .auth-box h2 { text-align: center; margin-bottom: 10px; color: #38bdf8; }
         
         /* Главный интерфейс в стиле TG */
-        #app { display: flex; width: 100vw; height: 100vh; }
+        #app { display: none; width: 100vw; height: 100vh; }
         .sidebar { width: 320px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; }
-        .search-box { padding: 15px; border-bottom: 1px solid #334155; }
+        .search-box { padding: 15px; border-bottom: 1px solid #334155; display: flex; flex-direction: column; gap: 10px; }
         .user-list { flex: 1; overflow-y: auto; }
-        .user-item { padding: 14px; border-bottom: 1px solid #334155; cursor: pointer; transition: 0.2s; }
+        .user-item { padding: 14px; border-bottom: 1px solid #334155; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; }
         .user-item:hover, .user-item.active { background: #334155; }
         
         .chat-area { flex: 1; display: flex; flex-direction: column; background: #0f172a; }
-        .chat-header { padding: 15px; background: #1e293b; border-bottom: 1px solid #334155; font-weight: bold; color: #38bdf8; }
+        .chat-header { padding: 15px; background: #1e293b; border-bottom: 1px solid #334155; font-weight: bold; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
         .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { max-width: 60%; padding: 10px 14px; border-radius: 10px; word-break: break-word; line-height: 1.4; }
         .msg.my { background: #2563eb; align-self: flex-end; border-bottom-right-radius: 2px; }
@@ -34,6 +34,12 @@
         input:focus { border-color: #38bdf8; }
         button { padding: 12px 18px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:hover { background: #1d4ed8; }
+        
+        /* Галочка и элементы админки */
+        .verified { color: #38bdf8; font-weight: bold; margin-left: 4px; }
+        .admin-btn { background: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px; border: none; cursor: pointer; }
+        .admin-btn:hover { background: #dc2626; }
+        .admin-panel { display: none; padding: 10px; background: #0f172a; border-bottom: 1px solid #334155; }
     </style>
 </head>
 <body>
@@ -44,7 +50,7 @@
             <h2>Вход в Messenger</h2>
             <input type="email" id="email" placeholder="Email">
             <input type="password" id="password" placeholder="Пароль">
-            <input type="text" id="username" placeholder="@username (для регистрации)">
+            <input type="text" id="username" placeholder="Юзернейм (например: @anketo)">
             <button onclick="register()">Зарегистрироваться</button>
             <button onclick="login()" style="background:#475569;">Войти</button>
         </div>
@@ -55,11 +61,18 @@
         <div class="sidebar">
             <div class="search-box">
                 <input type="text" id="search" placeholder="Поиск людей..." oninput="searchUsers()">
+                <button id="admin-panel-btn" style="display:none; background:#ef4444;" onclick="toggleAdminPanel()">👑 Админ-Панель</button>
+            </div>
+            <div id="admin-panel" class="admin-panel">
+                <small style="color:#ef4444; font-weight:bold;">Панель Администратора (@anketo)</small>
             </div>
             <div class="user-list" id="user-list"></div>
         </div>
         <div class="chat-area">
-            <div class="chat-header" id="chat-header">Выберите чат из списка слева</div>
+            <div class="chat-header">
+                <span id="chat-header">Выберите чат из списка слева</span>
+                <button onclick="logout()" style="background:#475569; font-size:12px; padding:6px 10px;">Выйти</button>
+            </div>
             <div class="messages" id="messages"></div>
             <div class="input-area">
                 <input type="text" id="msg-input" placeholder="Напишите сообщение..." onkeypress="if(event.key==='Enter') sendMsg()">
@@ -69,42 +82,69 @@
     </div>
 
 <script>
-    // Подключение к твоему проекту Supabase
     const SUPABASE_URL = "https://elygkutxqqesczazyrkq.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVseWdrdXR4cXFlc2N6YXp5cmtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTA3NDIsImV4cCI6MjEwMDI2Njc0Mn0.HtKdXas8bY-BoGlwxv6YtZGtEwI2WbCbzhYsHF5T6DM";
     const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let currentUser = null;
+    let currentProfile = null;
     let selectedUser = null;
 
-    // Регистрация нового пользователя
+    // 🔄 Автоматическая проверка сессии при загрузке страницы
+    window.onload = async () => {
+        const { data: { session } } = await db.auth.getSession();
+        if (session) {
+            currentUser = session.user;
+            await loadProfile();
+            showApp();
+        }
+    };
+
+    // Очистка юзернейма от лишних @
+    function cleanUsername(raw) {
+        return raw.replace(/@+/g, '').trim().toLowerCase();
+    }
+
+    // Загрузка текущего профиля
+    async function loadProfile() {
+        const { data } = await db.from('profiles').select('*').eq('id', currentUser.id).single();
+        currentProfile = data;
+        
+        // Показываем кнопку админа, если юзернейм 'anketo'
+        if (currentProfile && currentProfile.username === 'anketo') {
+            document.getElementById('admin-panel-btn').style.display = 'block';
+        }
+    }
+
+    // Запуск приложения
+    function showApp() {
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        searchUsers();
+        listenMessages();
+    }
+
+    // Регистрация
     async function register() {
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value.trim();
-        const username = document.getElementById('username').value.trim();
+        const rawUsername = document.getElementById('username').value;
+        const username = cleanUsername(rawUsername);
 
         if (!email || !password || !username) {
-            return alert("Заполните все 3 поля: Email, Пароль и Username!");
+            return alert("Заполните все поля!");
         }
 
-        // 1. Регистрация в Supabase Auth
         const { data, error } = await db.auth.signUp({ email, password });
         if (error) return alert("Ошибка регистрации: " + error.message);
 
-        if (!data.user) {
-            return alert("Ошибка: пользователь не создан.");
-        }
-
-        // 2. Создание профиля в базе
         const { error: profileError } = await db.from('profiles').insert([
-            { id: data.user.id, username: username }
+            { id: data.user.id, username: username, is_verified: username === 'anketo' }
         ]);
 
-        if (profileError) {
-            return alert("Ошибка профиля: " + profileError.message);
-        }
+        if (profileError) return alert("Ошибка профиля: " + profileError.message);
 
-        alert("Успешно зарегистрировались! Теперь нажмите кнопку 'Войти'.");
+        alert("Успешно! Нажмите 'Войти'.");
     }
 
     // Вход
@@ -112,22 +152,23 @@
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value.trim();
 
-        if (!email || !password) {
-            return alert("Введите Email и Пароль!");
-        }
-
         const { data, error } = await db.auth.signInWithPassword({ email, password });
         if (error) return alert("Ошибка входа: " + error.message);
 
         currentUser = data.user;
-        document.getElementById('auth-screen').style.display = 'none';
-        searchUsers();
-        listenMessages();
+        await loadProfile();
+        showApp();
+    }
+
+    // Выход из аккаунта
+    async function logout() {
+        await db.auth.signOut();
+        location.reload();
     }
 
     // Поиск юзеров
     async function searchUsers() {
-        const query = document.getElementById('search').value;
+        const query = cleanUsername(document.getElementById('search').value);
         let req = db.from('profiles').select('*').neq('id', currentUser.id);
         if (query) req = req.ilike('username', `%${query}%`);
         
@@ -135,20 +176,40 @@
         const list = document.getElementById('user-list');
         list.innerHTML = '';
         if (data) {
+            const isAdmin = currentProfile && currentProfile.username === 'anketo';
             data.forEach(user => {
-                list.innerHTML += `<div class="user-item" onclick="selectChat('${user.id}', '${user.username}')">@${user.username}</div>`;
+                const verifiedTag = user.is_verified ? '<span class="verified">✔</span>' : '';
+                let adminActions = '';
+
+                if (isAdmin) {
+                    adminActions = `
+                        <div>
+                            <button class="admin-btn" onclick="toggleVerify('${user.id}', ${!user.is_verified}); event.stopPropagation();">
+                                ${user.is_verified ? 'Снять ✔' : 'Дать ✔'}
+                            </button>
+                            <button class="admin-btn" onclick="deleteUser('${user.id}'); event.stopPropagation();">🗑</button>
+                        </div>
+                    `;
+                }
+
+                list.innerHTML += `
+                    <div class="user-item" onclick="selectChat('${user.id}', '${user.username}', ${user.is_verified})">
+                        <span>@${user.username} ${verifiedTag}</span>
+                        ${adminActions}
+                    </div>`;
             });
         }
     }
 
     // Выбор чата
-    async function selectChat(id, username) {
+    async function selectChat(id, username, isVerified) {
         selectedUser = { id, username };
-        document.getElementById('chat-header').textContent = 'Чат с @' + username;
+        const verifiedTag = isVerified ? '<span class="verified">✔</span>' : '';
+        document.getElementById('chat-header').innerHTML = 'Чат с @' + username + ' ' + verifiedTag;
         loadMessages();
     }
 
-    // Загрузка переписки
+    // Загрузка сообщений
     async function loadMessages() {
         if (!selectedUser) return;
         const { data } = await db.from('messages')
@@ -180,7 +241,7 @@
         input.value = '';
     }
 
-    // Прослушивание сообщений в реальном времени
+    // Прослушивание сообщений в Realtime
     function listenMessages() {
         db.channel('public:messages')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
@@ -189,6 +250,19 @@
                 }
             })
             .subscribe();
+    }
+
+    // --- 👑 ФУНКЦИИ АДМИНИСТРАТОРА (@anketo) ---
+    async function toggleVerify(userId, status) {
+        await db.from('profiles').update({ is_verified: status }).eq('id', userId);
+        searchUsers();
+    }
+
+    async function deleteUser(userId) {
+        if (confirm("Вы уверены, что хотите удалить этот профиль?")) {
+            await db.from('profiles').delete().eq('id', userId);
+            searchUsers();
+        }
     }
 </script>
 </body>
