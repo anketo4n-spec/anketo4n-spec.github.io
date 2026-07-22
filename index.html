@@ -247,23 +247,16 @@
     let callDurationSecs = 0;
     let activeIncomingCallData = null;
 
-    // ⚡ БЕЗОПАСНЫЙ КРОСС-БРАУЗЕРНЫЙ ЗАХВАТ МЕДИА
     async function getMediaStream(constraints) {
-        // Поддержка старых браузеров
-        if (navigator.mediaDevices === undefined) {
-            navigator.mediaDevices = {};
-        }
+        if (navigator.mediaDevices === undefined) { navigator.mediaDevices = {}; }
         if (navigator.mediaDevices.getUserMedia === undefined) {
             navigator.mediaDevices.getUserMedia = function(constraints) {
                 const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
                 if (!getUserMedia) {
                     return Promise.reject(new Error('getUserMedia не поддерживается в этом браузере или необходим HTTPS!'));
                 }
-                return new Promise((resolve, reject) => {
-                    getUserMedia.call(navigator, constraints, resolve, reject);
-                });
-
-            }
+                return new Promise((resolve, reject) => { getUserMedia.call(navigator, constraints, resolve, reject); });
+            };
         }
         return await navigator.mediaDevices.getUserMedia(constraints);
     }
@@ -324,21 +317,30 @@
         listenCalls();
     }
 
+    // 🌐 СТАБИЛЬНЫЙ ПРИЕМ WEBRTC С НАДЕЖНЫМИ STUN-СЕРВЕРАМИ
     function initPeer() {
         if (!currentUser) return;
-        const cleanPeerId = 'user_' + currentUser.id.replace(/-/g, '');
+        const cleanPeerId = getCleanPeerId(currentUser.id);
         
         peer = new Peer(cleanPeerId, {
             config: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
                 ]
             }
         });
 
+        // Слушаем входящие соединения постоянно
         peer.on('call', async (call) => {
             currentCall = call;
+            if (localCallStream) {
+                call.answer(localCallStream);
+                call.on('stream', remoteStream => handleConnectedStream(remoteStream));
+            }
         });
     }
 
@@ -346,46 +348,13 @@
         return 'user_' + userId.replace(/-/g, '');
     }
 
+    // 📞 ИНИЦИАЦИЯ ЗВОНКА
     async function initiateCall(isVideo = false) {
         if (!selectedUser) return;
         isCallVideo = isVideo;
 
-        showCallModal(selectedUser, "Звонок...", false);
-
-        await db.from('messages').insert([{
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            text: `[call_offer]:${isVideo ? 'video' : 'audio'}`
-        }]);
-    }
-
-    function listenCalls() {
-        db.channel('public:calls')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
-                const msg = payload.new;
-                
-                if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
-                    isCallVideo = msg.text.includes('video');
-                    activeIncomingCallData = msg;
-
-                    const { data: caller } = await db.from('profiles').select('*').eq('id', msg.sender_id).single();
-                    showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
-                }
-
-                if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
-                    document.getElementById('call-status').textContent = "Соединение...";
-                    startPeerCall(msg.sender_id);
-                }
-
-                if ((msg.receiver_id === currentUser.id || msg.sender_id === currentUser.id) && msg.text === '[call_end]') {
-                    endCall(false);
-                }
-            })
-            .subscribe();
-    }
-
-    async function startPeerCall(targetUserId) {
         try {
+            // Подготавливаем поток сразу перед отправкой вызова
             localCallStream = await getMediaStream({
                 video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
@@ -397,6 +366,57 @@
                 locVid.style.display = 'block';
             }
 
+            showCallModal(selectedUser, "Звонок...", false);
+
+            await db.from('messages').insert([{
+                sender_id: currentUser.id,
+                receiver_id: selectedUser.id,
+                text: `[call_offer]:${isVideo ? 'video' : 'audio'}`
+            }]);
+
+        } catch (e) {
+            alert("Ошибка доступа к устройствам: " + e.message);
+            endCall(false);
+        }
+    }
+
+    function listenCalls() {
+        db.channel('public:calls')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
+                const msg = payload.new;
+                
+                // Входящий вызов
+                if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
+                    isCallVideo = msg.text.includes('video');
+                    activeIncomingCallData = msg;
+
+                    const { data: caller } = await db.from('profiles').select('*').eq('id', msg.sender_id).single();
+                    showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
+                }
+
+                // Второму участнику ответили -> запускаем P2P соединение
+                if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
+                    document.getElementById('call-status').textContent = "Соединение...";
+                    startPeerCall(msg.sender_id);
+                }
+
+                // Сброс звонка
+                if ((msg.receiver_id === currentUser.id || msg.sender_id === currentUser.id) && msg.text === '[call_end]') {
+                    endCall(false);
+                }
+            })
+            .subscribe();
+    }
+
+    async function startPeerCall(targetUserId) {
+        try {
+            if (!localCallStream) {
+                localCallStream = await getMediaStream({
+                    video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
+                    audio: true
+                });
+            }
+
             const targetPeerId = getCleanPeerId(targetUserId);
             const call = peer.call(targetPeerId, localCallStream);
             currentCall = call;
@@ -405,7 +425,7 @@
                 handleConnectedStream(remoteStream);
             });
         } catch (e) {
-            alert("Ошибка доступа к устройству: " + e.message + "\nУбедитесь, что сайт открыт через HTTPS.");
+            alert("Ошибка соединения: " + e.message);
             endCall(true);
         }
     }
@@ -428,22 +448,20 @@
                 locVid.style.display = 'block';
             }
 
+            // Отвечаем звонящему, что готовы принять поток
             await db.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: activeIncomingCallData.sender_id,
                 text: '[call_accept]'
             }]);
 
-            peer.on('call', call => {
-                currentCall = call;
-                call.answer(localCallStream);
-                call.on('stream', remoteStream => {
-                    handleConnectedStream(remoteStream);
-                });
-            });
+            if (currentCall) {
+                currentCall.answer(localCallStream);
+                currentCall.on('stream', remoteStream => handleConnectedStream(remoteStream));
+            }
 
         } catch (e) {
-            alert("Ошибка доступа к устройству: " + e.message + "\nУбедитесь, что сайт открыт через HTTPS.");
+            alert("Ошибка доступа к устройствам: " + e.message);
             endCall(true);
         }
     }
@@ -452,6 +470,7 @@
         const remVid = document.getElementById('remote-video');
         remVid.srcObject = remoteStream;
         remVid.style.display = isCallVideo ? 'block' : 'none';
+        remVid.play().catch(()=>{});
 
         document.getElementById('toggle-mic-btn').style.display = 'flex';
         document.getElementById('toggle-cam-btn').style.display = isCallVideo ? 'flex' : 'none';
@@ -852,7 +871,7 @@
                 if (recordTimeLeft <= 0) { stopAndSendMedia(); }
             }, 1000);
 
-        } catch (err) { cleanupMediaStream(); alert("Ошибка доступа к устройству: " + err.message + "\nУбедитесь, что сайт открыт по защищенному протоколу HTTPS."); }
+        } catch (err) { cleanupMediaStream(); alert("Ошибка доступа к устройству: " + err.message); }
     }
 
     async function stopAndSendMedia() {
