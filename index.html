@@ -49,18 +49,16 @@
         
         .messages { flex: 1; padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 0); background-size: 24px 24px; }
 
-        /* Сообщения */
         .msg { max-width: 68%; padding: 8px 12px 6px 12px; border-radius: 12px; word-break: break-word; line-height: 1.4; font-size: 15px; position: relative; animation: msgPop 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; }
         .msg.my { background: var(--msg-out); align-self: flex-end; border-bottom-right-radius: 3px; color: white; }
         .msg.their { background: var(--msg-in); align-self: flex-start; border-bottom-left-radius: 3px; color: var(--text-main); }
         .msg-time { font-size: 11px; color: rgba(255, 255, 255, 0.5); align-self: flex-end; margin-top: 2px; margin-left: 8px; float: right; }
 
-        /* 📹 КРУЖОК TELEGRAM */
         .video-note { width: 220px; height: 220px; border-radius: 50%; object-fit: cover; background: black; cursor: pointer; border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.15s; }
         .video-note:active { transform: scale(0.98); }
         .msg.video-msg { background: transparent !important; padding: 0 !important; box-shadow: none; }
 
-        /* 🎙 КАСТОМНЫЙ ПЛЕЕР ГОЛОСОВЫХ TELEGRAM */
+        /* 🎙 КАСТОМНЫЙ ПЛЕЕР С ИСПРАВЛЕННЫМ ТАЙМЕРОМ */
         .tg-audio-player { display: flex; align-items: center; gap: 12px; width: 210px; padding: 4px 0; }
         .tg-play-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--primary); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; flex-shrink: 0; }
         .tg-audio-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
@@ -72,7 +70,6 @@
         #video-preview { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #ef4444; background: black; transform: scaleX(-1); }
         #rec-timer { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; color: #ef4444; border: 1px solid #ef4444; }
 
-        /* Поле ввода Telegram */
         .input-area { padding: 10px 16px; background: var(--bg-side); display: flex; gap: 8px; border-top: 1px solid var(--border); align-items: center; }
         input { padding: 12px 16px; border-radius: 22px; border: none; background: var(--bg-main); color: var(--text-main); width: 100%; outline: none; font-size: 15px; user-select: text; }
         input::placeholder { color: var(--text-sub); }
@@ -99,7 +96,6 @@
 </head>
 <body>
 
-    <!-- Экран Записи -->
     <div id="media-preview-modal" class="modal" style="display:none;">
         <div class="box" style="align-items:center;">
             <h2 id="rec-title">Запись...</h2>
@@ -112,7 +108,6 @@
         </div>
     </div>
 
-    <!-- Авторизация -->
     <div id="auth-screen" class="modal" style="display:none;">
         <div class="box">
             <h2>Вход в Telegram</h2>
@@ -125,7 +120,6 @@
         </div>
     </div>
 
-    <!-- Модалка Профиля -->
     <div id="profile-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeProfile();">
         <div class="box">
             <div class="profile-card">
@@ -147,7 +141,6 @@
         </div>
     </div>
 
-    <!-- Модалка Админки -->
     <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
             <h2>👑 Управление пользователями</h2>
@@ -156,7 +149,6 @@
         </div>
     </div>
 
-    <!-- Главный Интерфейс -->
     <div id="app">
         <div class="sidebar">
             <div class="sidebar-header">
@@ -206,7 +198,6 @@
     let isHoldRecording = false;
     let pressTimer = null;
 
-    // ⚡ БЫСТРАЯ ПРОВЕРКА СЕССИИ (Без подмигивания экрана входа)
     window.onload = async () => {
         setupTgButtonEvents();
         const { data: { session } } = await db.auth.getSession();
@@ -375,7 +366,6 @@
         box.scrollTop = box.scrollHeight;
     }
 
-    // ⚡ РЕНДЕР ОДНОГО СООБЩЕНИЯ (Мгновенное появление)
     function renderSingleMessage(m, isNew = true) {
         const box = document.getElementById('messages');
         const isMy = m.sender_id === currentUser.id;
@@ -401,7 +391,7 @@
                             </div>
                             <span id="time_${audioId}" class="tg-audio-timer">0:00</span>
                         </div>
-                        <audio id="${audioId}" src="${audioUrl}" ontimeupdate="updateAudioProgress('${audioId}')" onended="resetAudioBtn('${audioId}')"></audio>
+                        <audio id="${audioId}" src="${audioUrl}" preload="metadata" onloadedmetadata="initAudioDuration('${audioId}')" ontimeupdate="updateAudioProgress('${audioId}')" onended="resetAudioBtn('${audioId}')"></audio>
                     </div>
                     <span class="msg-time">${timeStr}</span>
                 </div>`;
@@ -417,17 +407,26 @@
         if (isNew) box.scrollTop = box.scrollHeight;
     }
 
-    // 🎵 УПРАВЛЕНИЕ КАСТОМНЫМ АУДИОПЛЕЕРОМ
+    // 🎵 ИСПРАВЛЕННАЯ РАБОТА С ДЛИТЕЛЬНОСТЬЮ АУДИО
+    function initAudioDuration(id) {
+        const audio = document.getElementById(id);
+        const timer = document.getElementById('time_' + id);
+        if (!audio || !timer) return;
+
+        // Корректно рассчитываем точное время аудио файла
+        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            const mins = Math.floor(audio.duration / 60);
+            const secs = Math.floor(audio.duration % 60);
+            timer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+    }
+
     function toggleAudio(id, btn) {
         const audio = document.getElementById(id);
         if (!audio) return;
 
-        document.querySelectorAll('audio').forEach(a => {
-            if (a !== audio) { a.pause(); }
-        });
-        document.querySelectorAll('.tg-play-btn').forEach(b => {
-            if (b !== btn) { b.textContent = '▶'; }
-        });
+        document.querySelectorAll('audio').forEach(a => { if (a !== audio) a.pause(); });
+        document.querySelectorAll('.tg-play-btn').forEach(b => { if (b !== btn) b.textContent = '▶'; });
 
         if (audio.paused) {
             audio.play();
@@ -442,7 +441,7 @@
         const audio = document.getElementById(id);
         const fill = document.getElementById('fill_' + id);
         const timer = document.getElementById('time_' + id);
-        if (!audio || !fill) return;
+        if (!audio || !fill || !audio.duration) return;
 
         const pct = (audio.currentTime / audio.duration) * 100;
         fill.style.width = (pct || 0) + '%';
@@ -458,12 +457,13 @@
         if (btn) btn.textContent = '▶';
         const fill = document.getElementById('fill_' + id);
         if (fill) fill.style.width = '0%';
+        initAudioDuration(id);
     }
 
     function seekAudio(e, id) {
         const audio = document.getElementById(id);
         const bar = e.currentTarget;
-        if (!audio || !bar) return;
+        if (!audio || !bar || !audio.duration) return;
 
         const rect = bar.getBoundingClientRect();
         const pos = (e.clientX - rect.left) / rect.width;
@@ -479,7 +479,6 @@
         if (targetVideo.paused) { targetVideo.play(); } else { targetVideo.pause(); }
     }
 
-    // ⚡ МГНОВЕННАЯ ОТПРАВКА СООБЩЕНИЯ
     async function sendMsg() {
         const input = document.getElementById('msg-input');
         const text = input.value.trim();
@@ -554,12 +553,11 @@
         }
     }
 
-    // 🎥 / 🎙 ОПТИМИЗИРОВАННАЯ ЗАПИСЬ (Без ошибок камеры)
     async function startMediaRecord(type) {
         if (!selectedUser) return alert("Сначала выберите чат!");
 
         try {
-            cleanupMediaStream(); // Очищаем старые потоки
+            cleanupMediaStream();
 
             const constraints = type === 'video' 
                 ? { video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: true }
@@ -619,7 +617,6 @@
             const blob = new Blob(mediaChunks, { type: mimeType });
             const fileName = `rec_${Date.now()}.webm`;
 
-            // Отображаем локальное видео/аудио мгновенно
             const localUrl = URL.createObjectURL(blob);
             renderSingleMessage({
                 sender_id: currentUser.id,
