@@ -91,6 +91,7 @@
         .icon-btn { background: transparent; border: none; color: var(--text-sub); font-size: 20px; padding: 8px; cursor: pointer; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
         .icon-btn:hover { color: var(--primary); background: var(--bg-hover); }
 
+        /* 📞 МОДАЛКА ЗВОНКА TELEGRAM */
         #call-modal { position: fixed; inset: 0; background: rgba(14, 22, 33, 0.95); backdrop-filter: blur(10px); z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 40px 20px; }
         .call-user-info { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
         .call-avatar { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; background: var(--primary); font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
@@ -237,7 +238,7 @@
     </div>
 
 <script>
-    // ⚙️ PWA Регистрация
+    // ⚙️ Регистрация PWA
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -271,13 +272,14 @@
     let callDurationSecs = 0;
     let activeIncomingCallData = null;
 
+    // ⚡ БЕЗОПАСНЫЙ ЗАХВАТ МЕДИА
     async function getMediaStream(constraints) {
         if (navigator.mediaDevices === undefined) { navigator.mediaDevices = {}; }
         if (navigator.mediaDevices.getUserMedia === undefined) {
             navigator.mediaDevices.getUserMedia = function(constraints) {
                 const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
                 if (!getUserMedia) {
-                    return Promise.reject(new Error('getUserMedia не поддерживается! Потребуется HTTPS.'));
+                    return Promise.reject(new Error('getUserMedia не поддерживается в этом браузере или необходим HTTPS!'));
                 }
                 return new Promise((resolve, reject) => { getUserMedia.call(navigator, constraints, resolve, reject); });
             };
@@ -341,6 +343,7 @@
         listenCalls();
     }
 
+    // 🌐 ИНИЦИАЛИЗАЦИЯ PEERJS С STUN И TURN СЕРВЕРАМИ
     function initPeer() {
         if (!currentUser) return;
         const cleanPeerId = getCleanPeerId(currentUser.id);
@@ -351,7 +354,9 @@
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
+                    // TURN сервер для мобильных звонков
+                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
                 ]
             }
         });
