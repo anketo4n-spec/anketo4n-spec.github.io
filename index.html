@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Telegram Web</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Подключаем WebRTC библиотеку PeerJS -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
@@ -24,7 +23,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
         body { background: var(--bg-main); color: var(--text-main); display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
-        .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; animation: fadeIn 0.15s ease; }
+        .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; animation: fadeIn 0.15s ease; }
         .box { background: var(--bg-side); padding: 24px; border-radius: 14px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); }
         .box h2 { text-align: center; color: var(--text-main); font-size: 20px; font-weight: 600; }
 
@@ -81,7 +80,7 @@
         .icon-btn { background: transparent; border: none; color: var(--text-sub); font-size: 20px; padding: 8px; cursor: pointer; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
         .icon-btn:hover { color: var(--primary); background: var(--bg-hover); }
 
-        /* 📞 ИНТЕРФЕЙС ЗВОНКА */
+        /* 📞 МОДАЛКА ЗВОНКА TELEGRAM */
         #call-modal { position: fixed; inset: 0; background: rgba(14, 22, 33, 0.95); backdrop-filter: blur(10px); z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 40px 20px; }
         .call-user-info { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
         .call-avatar { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; background: var(--primary); font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
@@ -126,14 +125,9 @@
         </div>
 
         <div class="call-controls" style="z-index: 2;">
-            <!-- Входящий звонок -->
             <button id="accept-call-btn" class="call-btn accept" onclick="acceptIncomingCall()" style="display:none;">📞</button>
-
-            <!-- Опции во время разговора -->
             <button id="toggle-mic-btn" class="call-btn option" onclick="toggleCallMic()" style="display:none;">🎙</button>
             <button id="toggle-cam-btn" class="call-btn option" onclick="toggleCallCam()" style="display:none;">📹</button>
-
-            <!-- Сброс -->
             <button class="call-btn decline" onclick="endCall(true)">📵</button>
         </div>
     </div>
@@ -217,7 +211,6 @@
                     <span id="chat-header-title" style="font-weight:600; color:var(--text-main); font-size:16px;">Выберите чат</span>
                 </div>
 
-                <!-- 📞 КНОПКИ ЗВОНКОВ В ШАПКЕ ЧАТА -->
                 <div id="chat-call-actions" style="display:none; gap:4px; margin-right:8px;">
                     <button class="icon-btn" onclick="initiateCall(false)" title="Аудиозвонок">📞</button>
                     <button class="icon-btn" onclick="initiateCall(true)" title="Видеозвонок">📹</button>
@@ -252,7 +245,7 @@
     let isHoldRecording = false;
     let pressTimer = null;
 
-    // 📞 WEBRTC PEERJS ПЕРЕМЕННЫЕ
+    // 📞 WEBRTC PEERJS (C GOOGLE STUN СЕРВЕРАМИ)
     let peer = null;
     let currentCall = null;
     let localCallStream = null;
@@ -267,7 +260,7 @@
         if (session) {
             currentUser = session.user;
             await loadProfile();
-            initPeer(); // Инициализация WebRTC
+            initPeer();
             showApp();
         } else {
             document.getElementById('auth-screen').style.display = 'flex';
@@ -314,20 +307,36 @@
         document.getElementById('app').style.display = 'flex';
         loadActiveChats();
         listenMessages();
-        listenCalls(); // Слушаем входящие вызовы
+        listenCalls();
     }
 
-    // 📞 ИНИЦИАЛИЗАЦИЯ WEBRTC PEERJS
+    // 🌐 ИНИЦИАЛИЗАЦИЯ PEERJS С STUN-СЕРВЕРАМИ DЛЯ ИЗБАВЛЕНИЯ ОТ ВЕЧНОГО СОЕДИНЕНИЯ
     function initPeer() {
         if (!currentUser) return;
-        peer = new Peer(currentUser.id);
+        
+        // Очищаем ID от дефисов для старого Safari/Android
+        const cleanPeerId = 'user_' + currentUser.id.replace(/-/g, '');
+        
+        peer = new Peer(cleanPeerId, {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+        });
 
         peer.on('call', async (call) => {
             currentCall = call;
         });
     }
 
-    // 📞 ЗВОНКИ: Отправка и прием сигналов через Supabase
+    function getCleanPeerId(userId) {
+        return 'user_' + userId.replace(/-/g, '');
+    }
+
+    // 📞 ЗВОНКИ
     async function initiateCall(isVideo = false) {
         if (!selectedUser) return;
         isCallVideo = isVideo;
@@ -346,7 +355,7 @@
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
                 const msg = payload.new;
                 
-                // Нам звонят
+                // Входящий звонок
                 if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
                     isCallVideo = msg.text.includes('video');
                     activeIncomingCallData = msg;
@@ -355,7 +364,7 @@
                     showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
                 }
 
-                // Собеседник принял вызов
+                // Ответ «Принят»
                 if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
                     document.getElementById('call-status').textContent = "Соединение...";
                     startPeerCall(msg.sender_id);
@@ -372,7 +381,7 @@
     async function startPeerCall(targetUserId) {
         try {
             localCallStream = await navigator.mediaDevices.getUserMedia({
-                video: isCallVideo,
+                video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
             });
 
@@ -382,14 +391,15 @@
                 locVid.style.display = 'block';
             }
 
-            const call = peer.call(targetUserId, localCallStream);
+            const targetPeerId = getCleanPeerId(targetUserId);
+            const call = peer.call(targetPeerId, localCallStream);
             currentCall = call;
 
             call.on('stream', remoteStream => {
                 handleConnectedStream(remoteStream);
             });
         } catch (e) {
-            alert("Ошибка доступа к микрофону/камере: " + e.message);
+            alert("Ошибка доступа к устройствам: " + e.message);
             endCall(true);
         }
     }
@@ -400,16 +410,9 @@
         document.getElementById('accept-call-btn').style.display = 'none';
         document.getElementById('call-status').textContent = "Соединение...";
 
-        // Уведомляем звонящего
-        await db.from('messages').insert([{
-            sender_id: currentUser.id,
-            receiver_id: activeIncomingCallData.sender_id,
-            text: '[call_accept]'
-        }]);
-
         try {
             localCallStream = await navigator.mediaDevices.getUserMedia({
-                video: isCallVideo,
+                video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
             });
 
@@ -419,12 +422,22 @@
                 locVid.style.display = 'block';
             }
 
-            if (currentCall) {
-                currentCall.answer(localCallStream);
-                currentCall.on('stream', remoteStream => {
+            // Уведомляем звонящего о готовности к соединению
+            await db.from('messages').insert([{
+                sender_id: currentUser.id,
+                receiver_id: activeIncomingCallData.sender_id,
+                text: '[call_accept]'
+            }]);
+
+            // Готовимся принять видео/аудио поток
+            peer.on('call', call => {
+                currentCall = call;
+                call.answer(localCallStream);
+                call.on('stream', remoteStream => {
                     handleConnectedStream(remoteStream);
                 });
-            }
+            });
+
         } catch (e) {
             alert("Ошибка доступа к устройствам: " + e.message);
             endCall(true);
@@ -434,10 +447,10 @@
     function handleConnectedStream(remoteStream) {
         const remVid = document.getElementById('remote-video');
         remVid.srcObject = remoteStream;
-        if (isCallVideo) remVid.style.display = 'block';
+        remVid.style.display = isCallVideo ? 'block' : 'none';
 
         document.getElementById('toggle-mic-btn').style.display = 'flex';
-        document.getElementById('toggle-cam-btn').style.display = 'flex';
+        document.getElementById('toggle-cam-btn').style.display = isCallVideo ? 'flex' : 'none';
 
         callDurationSecs = 0;
         clearInterval(callTimerInterval);
@@ -625,7 +638,7 @@
     }
 
     function renderSingleMessage(m, isNew = true) {
-        if (m.text.startsWith('[call_') ) return; // Не показываем служебные сигналы звонков как текст
+        if (m.text.startsWith('[call_') ) return;
 
         const box = document.getElementById('messages');
         const isMy = m.sender_id === currentUser.id;
