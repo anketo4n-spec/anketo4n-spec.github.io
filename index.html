@@ -80,7 +80,6 @@
         .icon-btn { background: transparent; border: none; color: var(--text-sub); font-size: 20px; padding: 8px; cursor: pointer; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
         .icon-btn:hover { color: var(--primary); background: var(--bg-hover); }
 
-        /* 📞 МОДАЛКА ЗВОНКА TELEGRAM */
         #call-modal { position: fixed; inset: 0; background: rgba(14, 22, 33, 0.95); backdrop-filter: blur(10px); z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 40px 20px; }
         .call-user-info { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
         .call-avatar { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; background: var(--primary); font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
@@ -113,7 +112,6 @@
 </head>
 <body>
 
-    <!-- 📞 МОДАЛКА ЗВОНКА -->
     <div id="call-modal" style="display:none;">
         <video id="remote-video" autoplay playsinline style="display:none;"></video>
         <video id="local-video" autoplay muted playsinline style="display:none;"></video>
@@ -132,7 +130,6 @@
         </div>
     </div>
 
-    <!-- Запись Кружков / ГС -->
     <div id="media-preview-modal" class="modal" style="display:none;">
         <div class="box" style="align-items:center;">
             <h2 id="rec-title">Запись...</h2>
@@ -145,7 +142,6 @@
         </div>
     </div>
 
-    <!-- Авторизация -->
     <div id="auth-screen" class="modal" style="display:none;">
         <div class="box">
             <h2>Вход в Telegram</h2>
@@ -158,7 +154,6 @@
         </div>
     </div>
 
-    <!-- Профиль -->
     <div id="profile-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeProfile();">
         <div class="box">
             <div class="profile-card">
@@ -180,7 +175,6 @@
         </div>
     </div>
 
-    <!-- Админка -->
     <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
             <h2>👑 Управление пользователями</h2>
@@ -245,7 +239,6 @@
     let isHoldRecording = false;
     let pressTimer = null;
 
-    // 📞 WEBRTC PEERJS (C GOOGLE STUN СЕРВЕРАМИ)
     let peer = null;
     let currentCall = null;
     let localCallStream = null;
@@ -253,6 +246,27 @@
     let callTimerInterval = null;
     let callDurationSecs = 0;
     let activeIncomingCallData = null;
+
+    // ⚡ БЕЗОПАСНЫЙ КРОСС-БРАУЗЕРНЫЙ ЗАХВАТ МЕДИА
+    async function getMediaStream(constraints) {
+        // Поддержка старых браузеров
+        if (navigator.mediaDevices === undefined) {
+            navigator.mediaDevices = {};
+        }
+        if (navigator.mediaDevices.getUserMedia === undefined) {
+            navigator.mediaDevices.getUserMedia = function(constraints) {
+                const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+                if (!getUserMedia) {
+                    return Promise.reject(new Error('getUserMedia не поддерживается в этом браузере или необходим HTTPS!'));
+                }
+                return new Promise((resolve, reject) => {
+                    getUserMedia.call(navigator, constraints, resolve, reject);
+                });
+
+            }
+        }
+        return await navigator.mediaDevices.getUserMedia(constraints);
+    }
 
     window.onload = async () => {
         setupTgButtonEvents();
@@ -310,19 +324,15 @@
         listenCalls();
     }
 
-    // 🌐 ИНИЦИАЛИЗАЦИЯ PEERJS С STUN-СЕРВЕРАМИ DЛЯ ИЗБАВЛЕНИЯ ОТ ВЕЧНОГО СОЕДИНЕНИЯ
     function initPeer() {
         if (!currentUser) return;
-        
-        // Очищаем ID от дефисов для старого Safari/Android
         const cleanPeerId = 'user_' + currentUser.id.replace(/-/g, '');
         
         peer = new Peer(cleanPeerId, {
             config: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
+                    { urls: 'stun:stun1.l.google.com:19302' }
                 ]
             }
         });
@@ -336,7 +346,6 @@
         return 'user_' + userId.replace(/-/g, '');
     }
 
-    // 📞 ЗВОНКИ
     async function initiateCall(isVideo = false) {
         if (!selectedUser) return;
         isCallVideo = isVideo;
@@ -355,7 +364,6 @@
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
                 const msg = payload.new;
                 
-                // Входящий звонок
                 if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
                     isCallVideo = msg.text.includes('video');
                     activeIncomingCallData = msg;
@@ -364,13 +372,11 @@
                     showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
                 }
 
-                // Ответ «Принят»
                 if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
                     document.getElementById('call-status').textContent = "Соединение...";
                     startPeerCall(msg.sender_id);
                 }
 
-                // Сброс звонка
                 if ((msg.receiver_id === currentUser.id || msg.sender_id === currentUser.id) && msg.text === '[call_end]') {
                     endCall(false);
                 }
@@ -380,7 +386,7 @@
 
     async function startPeerCall(targetUserId) {
         try {
-            localCallStream = await navigator.mediaDevices.getUserMedia({
+            localCallStream = await getMediaStream({
                 video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
             });
@@ -399,7 +405,7 @@
                 handleConnectedStream(remoteStream);
             });
         } catch (e) {
-            alert("Ошибка доступа к устройствам: " + e.message);
+            alert("Ошибка доступа к устройству: " + e.message + "\nУбедитесь, что сайт открыт через HTTPS.");
             endCall(true);
         }
     }
@@ -411,7 +417,7 @@
         document.getElementById('call-status').textContent = "Соединение...";
 
         try {
-            localCallStream = await navigator.mediaDevices.getUserMedia({
+            localCallStream = await getMediaStream({
                 video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
             });
@@ -422,14 +428,12 @@
                 locVid.style.display = 'block';
             }
 
-            // Уведомляем звонящего о готовности к соединению
             await db.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: activeIncomingCallData.sender_id,
                 text: '[call_accept]'
             }]);
 
-            // Готовимся принять видео/аудио поток
             peer.on('call', call => {
                 currentCall = call;
                 call.answer(localCallStream);
@@ -439,7 +443,7 @@
             });
 
         } catch (e) {
-            alert("Ошибка доступа к устройствам: " + e.message);
+            alert("Ошибка доступа к устройству: " + e.message + "\nУбедитесь, что сайт открыт через HTTPS.");
             endCall(true);
         }
     }
@@ -793,42 +797,13 @@
         }
     }
 
-    function encodeWAV(samples, sampleRate) {
-        const buffer = new ArrayBuffer(44 + samples.length * 2);
-        const view = new DataView(buffer);
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, 36 + samples.length * 2, true);
-        writeString(view, 8, 'WAVE');
-        writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeString(view, 36, 'data');
-        view.setUint32(40, samples.length * 2, true);
-
-        let offset = 44;
-        for (let i = 0; i < samples.length; i++, offset += 2) {
-            const s = Math.max(-1, Math.min(1, samples[i]));
-            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-        }
-        return buffer;
-    }
-
-    function writeString(view, offset, string) {
-        for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); }
-    }
-
     async function startMediaRecord(type) {
         if (!selectedUser) return alert("Сначала выберите чат!");
 
         try {
             cleanupMediaStream();
             const constraints = type === 'video' ? { video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: true } : { audio: true };
-            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+            mediaStream = await getMediaStream(constraints);
 
             if (type === 'video') {
                 document.getElementById('video-box-wrap').style.display = 'block';
@@ -877,7 +852,7 @@
                 if (recordTimeLeft <= 0) { stopAndSendMedia(); }
             }, 1000);
 
-        } catch (err) { cleanupMediaStream(); alert("Не удалось запустить запись: " + err.message); }
+        } catch (err) { cleanupMediaStream(); alert("Ошибка доступа к устройству: " + err.message + "\nУбедитесь, что сайт открыт по защищенному протоколу HTTPS."); }
     }
 
     async function stopAndSendMedia() {
@@ -905,6 +880,35 @@
             const blob = new Blob([wavBuffer], { type: 'audio/wav' });
             await uploadAndSendMedia(blob, 'audio/wav', 'voice', '[audio]:', `|dur:${durationInSecs}`);
         }
+    }
+
+    function encodeWAV(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++, offset += 2) {
+            const s = Math.max(-1, Math.min(1, samples[i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return buffer;
+    }
+
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); }
     }
 
     async function uploadAndSendMedia(blob, mimeType, bucket, prefix, durationSuffix) {
