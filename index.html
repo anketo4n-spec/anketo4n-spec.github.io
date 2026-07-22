@@ -240,6 +240,7 @@
     let pressTimer = null;
 
     let peer = null;
+    let peerReady = false;
     let currentCall = null;
     let localCallStream = null;
     let isCallVideo = false;
@@ -253,7 +254,7 @@
             navigator.mediaDevices.getUserMedia = function(constraints) {
                 const getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
                 if (!getUserMedia) {
-                    return Promise.reject(new Error('getUserMedia не поддерживается в этом браузере или необходим HTTPS!'));
+                    return Promise.reject(new Error('getUserMedia не поддерживается! Потребуется HTTPS.'));
                 }
                 return new Promise((resolve, reject) => { getUserMedia.call(navigator, constraints, resolve, reject); });
             };
@@ -317,10 +318,12 @@
         listenCalls();
     }
 
-    // 🌐 СТАБИЛЬНЫЙ ПРИЕМ WEBRTC С НАДЕЖНЫМИ STUN-СЕРВЕРАМИ
+    // 🌐 НАДЁЖНАЯ ИНИЦИАЛИЗАЦИЯ PEERJS БЕЗ ОШИБКИ "undefined on"
     function initPeer() {
         if (!currentUser) return;
         const cleanPeerId = getCleanPeerId(currentUser.id);
+        
+        peerReady = false;
         
         peer = new Peer(cleanPeerId, {
             config: {
@@ -334,7 +337,11 @@
             }
         });
 
-        // Слушаем входящие соединения постоянно
+        peer.on('open', (id) => {
+            peerReady = true;
+            console.log('PeerJS подключен. ID:', id);
+        });
+
         peer.on('call', async (call) => {
             currentCall = call;
             if (localCallStream) {
@@ -342,10 +349,14 @@
                 call.on('stream', remoteStream => handleConnectedStream(remoteStream));
             }
         });
+
+        peer.on('error', (err) => {
+            console.warn('PeerJS ошибка:', err);
+        });
     }
 
     function getCleanPeerId(userId) {
-        return 'user_' + userId.replace(/-/g, '');
+        return 'user_' + userId.replace(/[^a-zA-Z0-9]/g, '');
     }
 
     // 📞 ИНИЦИАЦИЯ ЗВОНКА
@@ -354,7 +365,6 @@
         isCallVideo = isVideo;
 
         try {
-            // Подготавливаем поток сразу перед отправкой вызова
             localCallStream = await getMediaStream({
                 video: isCallVideo ? { facingMode: "user", width: { ideal: 640 } } : false,
                 audio: true
@@ -375,7 +385,7 @@
             }]);
 
         } catch (e) {
-            alert("Ошибка доступа к устройствам: " + e.message);
+            alert("Ошибка доступа к устройству: " + e.message);
             endCall(false);
         }
     }
@@ -385,7 +395,6 @@
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
                 const msg = payload.new;
                 
-                // Входящий вызов
                 if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
                     isCallVideo = msg.text.includes('video');
                     activeIncomingCallData = msg;
@@ -394,13 +403,11 @@
                     showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
                 }
 
-                // Второму участнику ответили -> запускаем P2P соединение
                 if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
                     document.getElementById('call-status').textContent = "Соединение...";
                     startPeerCall(msg.sender_id);
                 }
 
-                // Сброс звонка
                 if ((msg.receiver_id === currentUser.id || msg.sender_id === currentUser.id) && msg.text === '[call_end]') {
                     endCall(false);
                 }
@@ -409,6 +416,11 @@
     }
 
     async function startPeerCall(targetUserId) {
+        if (!peer || !peerReady) {
+            initPeer();
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
         try {
             if (!localCallStream) {
                 localCallStream = await getMediaStream({
@@ -418,12 +430,17 @@
             }
 
             const targetPeerId = getCleanPeerId(targetUserId);
-            const call = peer.call(targetPeerId, localCallStream);
-            currentCall = call;
+            
+            if (peer) {
+                const call = peer.call(targetPeerId, localCallStream);
+                currentCall = call;
 
-            call.on('stream', remoteStream => {
-                handleConnectedStream(remoteStream);
-            });
+                if (call) {
+                    call.on('stream', remoteStream => {
+                        handleConnectedStream(remoteStream);
+                    });
+                }
+            }
         } catch (e) {
             alert("Ошибка соединения: " + e.message);
             endCall(true);
@@ -448,16 +465,18 @@
                 locVid.style.display = 'block';
             }
 
-            // Отвечаем звонящему, что готовы принять поток
             await db.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: activeIncomingCallData.sender_id,
                 text: '[call_accept]'
             }]);
 
-            if (currentCall) {
-                currentCall.answer(localCallStream);
-                currentCall.on('stream', remoteStream => handleConnectedStream(remoteStream));
+            if (peer) {
+                peer.on('call', call => {
+                    currentCall = call;
+                    call.answer(localCallStream);
+                    call.on('stream', remoteStream => handleConnectedStream(remoteStream));
+                });
             }
 
         } catch (e) {
