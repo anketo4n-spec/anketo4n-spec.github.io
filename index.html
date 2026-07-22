@@ -79,28 +79,42 @@
 
     // Регистрация нового пользователя
     async function register() {
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value.trim();
         const username = document.getElementById('username').value.trim();
 
         if (!email || !password || !username) {
-            return alert("Заполните все поля для регистрации!");
+            return alert("Заполните все 3 поля: Email, Пароль и Username!");
         }
 
+        // 1. Регистрация в Supabase Auth
         const { data, error } = await db.auth.signUp({ email, password });
-        if (error) return alert("Ошибка: " + error.message);
+        if (error) return alert("Ошибка регистрации: " + error.message);
 
-        // Создание профиля в таблице
-        const { error: profileError } = await db.from('profiles').insert([{ id: data.user.id, username }]);
-        if (profileError) return alert("Ошибка профиля: " + profileError.message);
+        if (!data.user) {
+            return alert("Ошибка: пользователь не создан.");
+        }
 
-        alert("Регистрация успешна! Теперь нажмите 'Войти'.");
+        // 2. Создание профиля в базе
+        const { error: profileError } = await db.from('profiles').insert([
+            { id: data.user.id, username: username }
+        ]);
+
+        if (profileError) {
+            return alert("Ошибка профиля: " + profileError.message);
+        }
+
+        alert("Успешно зарегистрировались! Теперь нажмите кнопку 'Войти'.");
     }
 
     // Вход
     async function login() {
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value.trim();
+
+        if (!email || !password) {
+            return alert("Введите Email и Пароль!");
+        }
 
         const { data, error } = await db.auth.signInWithPassword({ email, password });
         if (error) return alert("Ошибка входа: " + error.message);
