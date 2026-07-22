@@ -58,7 +58,7 @@
         .video-note:active { transform: scale(0.98); }
         .msg.video-msg { background: transparent !important; padding: 0 !important; box-shadow: none; }
 
-        /* 🎙 КАСТОМНЫЙ ПЛЕЕР С ИСПРАВЛЕННЫМ ТАЙМЕРОМ */
+        /* 🎙 КАСТОМНЫЙ ПЛЕЕР С ТОЧНОЙ ДЛИТЕЛЬНОСТЬЮ */
         .tg-audio-player { display: flex; align-items: center; gap: 12px; width: 210px; padding: 4px 0; }
         .tg-play-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--primary); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; flex-shrink: 0; }
         .tg-audio-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
@@ -195,6 +195,7 @@
     let mediaStream = null;
     let recordTimerInterval = null;
     let recordTimeLeft = 30;
+    let actualRecordedSecs = 0; // Точное записанное время
     let isHoldRecording = false;
     let pressTimer = null;
 
@@ -216,6 +217,12 @@
         if (!dateStr) return '';
         const d = new Date(dateStr);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatDuration(seconds) {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
     function renderAvatarHTML(profile, isBig = false) {
@@ -379,7 +386,12 @@
                     <video class="video-note" src="${videoUrl}" playsinline onclick="playVideoNote(this)"></video>
                 </div>`;
         } else if (m.text.startsWith('[audio]:')) {
-            const audioUrl = m.text.replace('[audio]:', '');
+            // Разделяем ссылку на файл и точную сохраненную длительность
+            const parts = m.text.replace('[audio]:', '').split('|dur:');
+            const audioUrl = parts[0];
+            const storedDur = parts[1] ? parseInt(parts[1]) : 0;
+            const initialTimerText = storedDur > 0 ? formatDuration(storedDur) : '0:00';
+
             const audioId = 'aud_' + Math.random().toString(36).substr(2, 9);
             html = `
                 <div class="msg ${isMy ? 'my' : 'their'}">
@@ -389,7 +401,7 @@
                             <div class="tg-progress-bar" onclick="seekAudio(event, '${audioId}')">
                                 <div id="fill_${audioId}" class="tg-progress-fill"></div>
                             </div>
-                            <span id="time_${audioId}" class="tg-audio-timer">0:00</span>
+                            <span id="time_${audioId}" class="tg-audio-timer" data-duration="${storedDur}">${initialTimerText}</span>
                         </div>
                         <audio id="${audioId}" src="${audioUrl}" preload="metadata" onloadedmetadata="initAudioDuration('${audioId}')" ontimeupdate="updateAudioProgress('${audioId}')" onended="resetAudioBtn('${audioId}')"></audio>
                     </div>
@@ -407,17 +419,17 @@
         if (isNew) box.scrollTop = box.scrollHeight;
     }
 
-    // 🎵 ИСПРАВЛЕННАЯ РАБОТА С ДЛИТЕЛЬНОСТЬЮ АУДИО
+    // 🎵 УПРАВЛЕНИЕ АУДИОПЛЕЕРОМ В СТИЛЕ TELEGRAM
     function initAudioDuration(id) {
         const audio = document.getElementById(id);
         const timer = document.getElementById('time_' + id);
         if (!audio || !timer) return;
 
-        // Корректно рассчитываем точное время аудио файла
-        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-            const mins = Math.floor(audio.duration / 60);
-            const secs = Math.floor(audio.duration % 60);
-            timer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        const storedDur = parseInt(timer.getAttribute('data-duration') || '0');
+        if (storedDur > 0) {
+            timer.textContent = formatDuration(storedDur);
+        } else if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            timer.textContent = formatDuration(audio.duration);
         }
     }
 
@@ -441,14 +453,17 @@
         const audio = document.getElementById(id);
         const fill = document.getElementById('fill_' + id);
         const timer = document.getElementById('time_' + id);
-        if (!audio || !fill || !audio.duration) return;
+        if (!audio || !fill) return;
 
-        const pct = (audio.currentTime / audio.duration) * 100;
-        fill.style.width = (pct || 0) + '%';
+        // Корректно высчитываем прогресс закрашивания полоски
+        const dur = audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) 
+            ? audio.duration 
+            : parseInt(timer.getAttribute('data-duration') || '1');
 
-        const mins = Math.floor(audio.currentTime / 60);
-        const secs = Math.floor(audio.currentTime % 60);
-        timer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        const pct = (audio.currentTime / dur) * 100;
+        fill.style.width = Math.min(pct, 100) + '%';
+
+        timer.textContent = formatDuration(audio.currentTime);
     }
 
     function resetAudioBtn(id) {
@@ -463,11 +478,18 @@
     function seekAudio(e, id) {
         const audio = document.getElementById(id);
         const bar = e.currentTarget;
-        if (!audio || !bar || !audio.duration) return;
+        const timer = document.getElementById('time_' + id);
+        if (!audio || !bar) return;
+
+        const dur = audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) 
+            ? audio.duration 
+            : parseInt(timer.getAttribute('data-duration') || '0');
+
+        if (!dur) return;
 
         const rect = bar.getBoundingClientRect();
         const pos = (e.clientX - rect.left) / rect.width;
-        audio.currentTime = pos * audio.duration;
+        audio.currentTime = pos * dur;
     }
 
     function playVideoNote(targetVideo) {
@@ -553,6 +575,7 @@
         }
     }
 
+    // 🎥 / 🎙 ЗАПИСЬ С ТОЧНЫМ ПОДСЧЕТОМ ДЛИТЕЛЬНОСТИ
     async function startMediaRecord(type) {
         if (!selectedUser) return alert("Сначала выберите чат!");
 
@@ -581,6 +604,7 @@
 
             mediaChunks = [];
             recordTimeLeft = 30;
+            actualRecordedSecs = 0;
             document.getElementById('rec-timer').textContent = "0:30";
 
             mediaRecorder = new MediaRecorder(mediaStream);
@@ -590,6 +614,7 @@
             clearInterval(recordTimerInterval);
             recordTimerInterval = setInterval(() => {
                 recordTimeLeft--;
+                actualRecordedSecs++; // Фиксируем каждую записанную секунду
                 const secStr = recordTimeLeft < 10 ? '0' + recordTimeLeft : recordTimeLeft;
                 document.getElementById('rec-timer').textContent = `0:${secStr}`;
 
@@ -608,11 +633,16 @@
         if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
         clearInterval(recordTimerInterval);
 
+        const durationInSecs = Math.max(1, actualRecordedSecs); // Избегаем 0 секунд
+
         mediaRecorder.onstop = async () => {
             const isVideo = currentMediaMode === 'video';
             const mimeType = isVideo ? 'video/webm' : 'audio/webm';
             const bucket = isVideo ? 'videos' : 'voice';
-            const prefix = isVideo ? '[video]:' : '[audio]:';
+            
+            // Если голосовое — прикрепляем к тексту точный параметр длительности |dur:X
+            const prefix = isVideo ? '[video]:' : `[audio]:`;
+            const durationSuffix = isVideo ? '' : `|dur:${durationInSecs}`;
 
             const blob = new Blob(mediaChunks, { type: mimeType });
             const fileName = `rec_${Date.now()}.webm`;
@@ -621,7 +651,7 @@
             renderSingleMessage({
                 sender_id: currentUser.id,
                 receiver_id: selectedUser.id,
-                text: `${prefix}${localUrl}`,
+                text: `${prefix}${localUrl}${durationSuffix}`,
                 created_at: new Date().toISOString()
             }, true);
 
@@ -635,7 +665,7 @@
             await db.from('messages').insert([{
                 sender_id: currentUser.id,
                 receiver_id: selectedUser.id,
-                text: `${prefix}${publicUrl}`
+                text: `${prefix}${publicUrl}${durationSuffix}`
             }]);
 
             loadActiveChats();
