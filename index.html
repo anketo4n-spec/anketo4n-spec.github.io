@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Telegram Web</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Подключаем WebRTC библиотеку PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root {
             --bg-main: #0e1621;
@@ -22,7 +24,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
         body { background: var(--bg-main); color: var(--text-main); display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
-        .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; animation: fadeIn 0.15s ease; }
+        .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 15px; animation: fadeIn 0.15s ease; }
         .box { background: var(--bg-side); padding: 24px; border-radius: 14px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); }
         .box h2 { text-align: center; color: var(--text-main); font-size: 20px; font-weight: 600; }
 
@@ -58,7 +60,6 @@
         .video-note:active { transform: scale(0.98); }
         .msg.video-msg { background: transparent !important; padding: 0 !important; box-shadow: none; }
 
-        /* 🎙 КАСТОМНЫЙ ПЛЕЕР ГОЛОСОВЫХ */
         .tg-audio-player { display: flex; align-items: center; gap: 12px; width: 210px; padding: 4px 0; }
         .tg-play-btn { width: 38px; height: 38px; border-radius: 50%; background: var(--primary); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; flex-shrink: 0; }
         .tg-audio-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
@@ -76,6 +77,23 @@
         
         .action-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.15s, background 0.15s; }
         .action-btn:active, .action-btn.recording { transform: scale(1.15); background: #ef4444; }
+
+        .icon-btn { background: transparent; border: none; color: var(--text-sub); font-size: 20px; padding: 8px; cursor: pointer; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
+        .icon-btn:hover { color: var(--primary); background: var(--bg-hover); }
+
+        /* 📞 ИНТЕРФЕЙС ЗВОНКА */
+        #call-modal { position: fixed; inset: 0; background: rgba(14, 22, 33, 0.95); backdrop-filter: blur(10px); z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 40px 20px; }
+        .call-user-info { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
+        .call-avatar { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; background: var(--primary); font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        .call-controls { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+        .call-btn { width: 60px; height: 60px; border-radius: 50%; border: none; font-size: 24px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.15s; }
+        .call-btn:active { transform: scale(0.9); }
+        .call-btn.accept { background: #22c55e; }
+        .call-btn.decline { background: #ef4444; }
+        .call-btn.option { background: var(--bg-hover); color: var(--text-main); }
+
+        #remote-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        #local-video { position: absolute; top: 20px; right: 20px; width: 110px; height: 160px; border-radius: 12px; object-fit: cover; border: 2px solid white; z-index: 2; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transform: scaleX(-1); }
 
         .back-btn { display: none; background: transparent; padding: 6px; font-size: 20px; color: var(--primary); border: none; }
         .verified { color: #38bdf8; font-size: 14px; }
@@ -96,6 +114,31 @@
 </head>
 <body>
 
+    <!-- 📞 МОДАЛКА ЗВОНКА -->
+    <div id="call-modal" style="display:none;">
+        <video id="remote-video" autoplay playsinline style="display:none;"></video>
+        <video id="local-video" autoplay muted playsinline style="display:none;"></video>
+
+        <div class="call-user-info" style="z-index: 2;">
+            <div id="call-avatar-box"></div>
+            <h2 id="call-user-name" style="font-size:22px; margin-top:8px;">Собеседник</h2>
+            <span id="call-status" style="color:var(--text-sub); font-size:14px;">Вызов...</span>
+        </div>
+
+        <div class="call-controls" style="z-index: 2;">
+            <!-- Входящий звонок -->
+            <button id="accept-call-btn" class="call-btn accept" onclick="acceptIncomingCall()" style="display:none;">📞</button>
+
+            <!-- Опции во время разговора -->
+            <button id="toggle-mic-btn" class="call-btn option" onclick="toggleCallMic()" style="display:none;">🎙</button>
+            <button id="toggle-cam-btn" class="call-btn option" onclick="toggleCallCam()" style="display:none;">📹</button>
+
+            <!-- Сброс -->
+            <button class="call-btn decline" onclick="endCall(true)">📵</button>
+        </div>
+    </div>
+
+    <!-- Запись Кружков / ГС -->
     <div id="media-preview-modal" class="modal" style="display:none;">
         <div class="box" style="align-items:center;">
             <h2 id="rec-title">Запись...</h2>
@@ -108,6 +151,7 @@
         </div>
     </div>
 
+    <!-- Авторизация -->
     <div id="auth-screen" class="modal" style="display:none;">
         <div class="box">
             <h2>Вход в Telegram</h2>
@@ -120,6 +164,7 @@
         </div>
     </div>
 
+    <!-- Профиль -->
     <div id="profile-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeProfile();">
         <div class="box">
             <div class="profile-card">
@@ -141,6 +186,7 @@
         </div>
     </div>
 
+    <!-- Админка -->
     <div id="admin-modal" class="modal" style="display:none;" onclick="if(event.target===this) closeAdmin();">
         <div class="box" style="max-width:450px;">
             <h2>👑 Управление пользователями</h2>
@@ -167,10 +213,17 @@
         <div class="chat-area">
             <div class="chat-header">
                 <button class="back-btn" onclick="closeChatMobile()">←</button>
-                <div id="chat-header-info" onclick="openSelectedUserProfile()" style="display:flex; align-items:center; gap:12px; cursor:pointer; overflow:hidden;">
+                <div id="chat-header-info" onclick="openSelectedUserProfile()" style="display:flex; align-items:center; gap:12px; cursor:pointer; overflow:hidden; flex:1;">
                     <span id="chat-header-title" style="font-weight:600; color:var(--text-main); font-size:16px;">Выберите чат</span>
                 </div>
-                <button onclick="logout()" style="background:transparent; color:var(--text-sub); font-size:13px; border:none; cursor:pointer; margin-left:auto;">Выйти</button>
+
+                <!-- 📞 КНОПКИ ЗВОНКОВ В ШАПКЕ ЧАТА -->
+                <div id="chat-call-actions" style="display:none; gap:4px; margin-right:8px;">
+                    <button class="icon-btn" onclick="initiateCall(false)" title="Аудиозвонок">📞</button>
+                    <button class="icon-btn" onclick="initiateCall(true)" title="Видеозвонок">📹</button>
+                </div>
+
+                <button onclick="logout()" style="background:transparent; color:var(--text-sub); font-size:13px; border:none; cursor:pointer;">Выйти</button>
             </div>
             <div class="messages" id="messages"></div>
             <div class="input-area">
@@ -199,11 +252,14 @@
     let isHoldRecording = false;
     let pressTimer = null;
 
-    // Переменные WebAudio API для чистого WAV без багов длительности
-    let audioCtx = null;
-    let audioProcessor = null;
-    let pcmBuffers = [];
-    let sampleRate = 44100;
+    // 📞 WEBRTC PEERJS ПЕРЕМЕННЫЕ
+    let peer = null;
+    let currentCall = null;
+    let localCallStream = null;
+    let isCallVideo = false;
+    let callTimerInterval = null;
+    let callDurationSecs = 0;
+    let activeIncomingCallData = null;
 
     window.onload = async () => {
         setupTgButtonEvents();
@@ -211,6 +267,7 @@
         if (session) {
             currentUser = session.user;
             await loadProfile();
+            initPeer(); // Инициализация WebRTC
             showApp();
         } else {
             document.getElementById('auth-screen').style.display = 'flex';
@@ -232,9 +289,9 @@
     }
 
     function renderAvatarHTML(profile, isBig = false) {
-        const name = profile.display_name || profile.username || 'U';
+        const name = profile ? (profile.display_name || profile.username || 'U') : 'U';
         const cssClass = isBig ? 'profile-avatar' : 'avatar';
-        if (profile.avatar_url) return `<img class="${cssClass}" src="${profile.avatar_url}" alt="avatar">`;
+        if (profile && profile.avatar_url) return `<img class="${cssClass}" src="${profile.avatar_url}" alt="avatar">`;
         return `<div class="${cssClass}">${name.charAt(0).toUpperCase()}</div>`;
     }
 
@@ -257,6 +314,192 @@
         document.getElementById('app').style.display = 'flex';
         loadActiveChats();
         listenMessages();
+        listenCalls(); // Слушаем входящие вызовы
+    }
+
+    // 📞 ИНИЦИАЛИЗАЦИЯ WEBRTC PEERJS
+    function initPeer() {
+        if (!currentUser) return;
+        peer = new Peer(currentUser.id);
+
+        peer.on('call', async (call) => {
+            currentCall = call;
+        });
+    }
+
+    // 📞 ЗВОНКИ: Отправка и прием сигналов через Supabase
+    async function initiateCall(isVideo = false) {
+        if (!selectedUser) return;
+        isCallVideo = isVideo;
+
+        showCallModal(selectedUser, "Звонок...", false);
+
+        await db.from('messages').insert([{
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            text: `[call_offer]:${isVideo ? 'video' : 'audio'}`
+        }]);
+    }
+
+    function listenCalls() {
+        db.channel('public:calls')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
+                const msg = payload.new;
+                
+                // Нам звонят
+                if (msg.receiver_id === currentUser.id && msg.text.startsWith('[call_offer]:')) {
+                    isCallVideo = msg.text.includes('video');
+                    activeIncomingCallData = msg;
+
+                    const { data: caller } = await db.from('profiles').select('*').eq('id', msg.sender_id).single();
+                    showCallModal(caller, isCallVideo ? "Входящий видеозвонок..." : "Входящий аудиозвонок...", true);
+                }
+
+                // Собеседник принял вызов
+                if (msg.receiver_id === currentUser.id && msg.text === '[call_accept]') {
+                    document.getElementById('call-status').textContent = "Соединение...";
+                    startPeerCall(msg.sender_id);
+                }
+
+                // Сброс звонка
+                if ((msg.receiver_id === currentUser.id || msg.sender_id === currentUser.id) && msg.text === '[call_end]') {
+                    endCall(false);
+                }
+            })
+            .subscribe();
+    }
+
+    async function startPeerCall(targetUserId) {
+        try {
+            localCallStream = await navigator.mediaDevices.getUserMedia({
+                video: isCallVideo,
+                audio: true
+            });
+
+            if (isCallVideo) {
+                const locVid = document.getElementById('local-video');
+                locVid.srcObject = localCallStream;
+                locVid.style.display = 'block';
+            }
+
+            const call = peer.call(targetUserId, localCallStream);
+            currentCall = call;
+
+            call.on('stream', remoteStream => {
+                handleConnectedStream(remoteStream);
+            });
+        } catch (e) {
+            alert("Ошибка доступа к микрофону/камере: " + e.message);
+            endCall(true);
+        }
+    }
+
+    async function acceptIncomingCall() {
+        if (!activeIncomingCallData) return;
+
+        document.getElementById('accept-call-btn').style.display = 'none';
+        document.getElementById('call-status').textContent = "Соединение...";
+
+        // Уведомляем звонящего
+        await db.from('messages').insert([{
+            sender_id: currentUser.id,
+            receiver_id: activeIncomingCallData.sender_id,
+            text: '[call_accept]'
+        }]);
+
+        try {
+            localCallStream = await navigator.mediaDevices.getUserMedia({
+                video: isCallVideo,
+                audio: true
+            });
+
+            if (isCallVideo) {
+                const locVid = document.getElementById('local-video');
+                locVid.srcObject = localCallStream;
+                locVid.style.display = 'block';
+            }
+
+            if (currentCall) {
+                currentCall.answer(localCallStream);
+                currentCall.on('stream', remoteStream => {
+                    handleConnectedStream(remoteStream);
+                });
+            }
+        } catch (e) {
+            alert("Ошибка доступа к устройствам: " + e.message);
+            endCall(true);
+        }
+    }
+
+    function handleConnectedStream(remoteStream) {
+        const remVid = document.getElementById('remote-video');
+        remVid.srcObject = remoteStream;
+        if (isCallVideo) remVid.style.display = 'block';
+
+        document.getElementById('toggle-mic-btn').style.display = 'flex';
+        document.getElementById('toggle-cam-btn').style.display = 'flex';
+
+        callDurationSecs = 0;
+        clearInterval(callTimerInterval);
+        callTimerInterval = setInterval(() => {
+            callDurationSecs++;
+            document.getElementById('call-status').textContent = formatDuration(callDurationSecs);
+        }, 1000);
+    }
+
+    function showCallModal(user, statusText, isIncoming) {
+        document.getElementById('call-avatar-box').innerHTML = renderAvatarHTML(user, true);
+        document.getElementById('call-user-name').textContent = user.display_name || user.username;
+        document.getElementById('call-status').textContent = statusText;
+
+        document.getElementById('accept-call-btn').style.display = isIncoming ? 'flex' : 'none';
+        document.getElementById('toggle-mic-btn').style.display = 'none';
+        document.getElementById('toggle-cam-btn').style.display = 'none';
+
+        document.getElementById('remote-video').style.display = 'none';
+        document.getElementById('local-video').style.display = 'none';
+
+        document.getElementById('call-modal').style.display = 'flex';
+    }
+
+    async function endCall(sendSignal = true) {
+        clearInterval(callTimerInterval);
+
+        if (sendSignal && (selectedUser || activeIncomingCallData)) {
+            const targetId = selectedUser ? selectedUser.id : activeIncomingCallData.sender_id;
+            await db.from('messages').insert([{
+                sender_id: currentUser.id,
+                receiver_id: targetId,
+                text: '[call_end]'
+            }]);
+        }
+
+        if (currentCall) { currentCall.close(); currentCall = null; }
+        if (localCallStream) {
+            localCallStream.getTracks().forEach(t => t.stop());
+            localCallStream = null;
+        }
+
+        document.getElementById('call-modal').style.display = 'none';
+        activeIncomingCallData = null;
+    }
+
+    function toggleCallMic() {
+        if (!localCallStream) return;
+        const track = localCallStream.getAudioTracks()[0];
+        if (track) {
+            track.enabled = !track.enabled;
+            document.getElementById('toggle-mic-btn').style.opacity = track.enabled ? '1' : '0.4';
+        }
+    }
+
+    function toggleCallCam() {
+        if (!localCallStream) return;
+        const track = localCallStream.getVideoTracks()[0];
+        if (track) {
+            track.enabled = !track.enabled;
+            document.getElementById('toggle-cam-btn').style.opacity = track.enabled ? '1' : '0.4';
+        }
     }
 
     async function register() {
@@ -290,6 +533,7 @@
 
         currentUser = data.user;
         await loadProfile();
+        initPeer();
         showApp();
     }
 
@@ -358,6 +602,7 @@
         selectedUser = { id, displayName, username, avatarUrl, isVerified };
         const verifiedTag = isVerified ? '<span class="verified">✔</span>' : '';
         document.getElementById('chat-header-title').innerHTML = `${displayName} ${verifiedTag} <br><small style="color:var(--text-sub); font-weight:normal;">@${username}</small>`;
+        document.getElementById('chat-call-actions').style.display = 'flex';
         document.getElementById('app').classList.add('chat-open');
         loadMessages();
     }
@@ -380,6 +625,8 @@
     }
 
     function renderSingleMessage(m, isNew = true) {
+        if (m.text.startsWith('[call_') ) return; // Не показываем служебные сигналы звонков как текст
+
         const box = document.getElementById('messages');
         const isMy = m.sender_id === currentUser.id;
         const timeStr = formatTime(m.created_at || new Date().toISOString());
@@ -444,13 +691,7 @@
         document.querySelectorAll('audio').forEach(a => { if (a !== audio) a.pause(); });
         document.querySelectorAll('.tg-play-btn').forEach(b => { if (b !== btn) b.textContent = '▶'; });
 
-        if (audio.paused) {
-            audio.play();
-            btn.textContent = '❚❚';
-        } else {
-            audio.pause();
-            btn.textContent = '▶';
-        }
+        if (audio.paused) { audio.play(); btn.textContent = '❚❚'; } else { audio.pause(); btn.textContent = '▶'; }
     }
 
     function updateAudioProgress(id) {
@@ -459,13 +700,9 @@
         const timer = document.getElementById('time_' + id);
         if (!audio || !fill) return;
 
-        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration))
-            ? audio.duration 
-            : parseInt(timer.getAttribute('data-duration') || '1');
-
+        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) ? audio.duration : parseInt(timer.getAttribute('data-duration') || '1');
         const pct = (audio.currentTime / dur) * 100;
         fill.style.width = Math.min(pct, 100) + '%';
-
         timer.textContent = formatDuration(audio.currentTime);
     }
 
@@ -484,10 +721,7 @@
         const timer = document.getElementById('time_' + id);
         if (!audio || !bar) return;
 
-        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) 
-            ? audio.duration 
-            : parseInt(timer.getAttribute('data-duration') || '0');
-
+        const dur = (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) ? audio.duration : parseInt(timer.getAttribute('data-duration') || '0');
         if (!dur) return;
 
         const rect = bar.getBoundingClientRect();
@@ -497,10 +731,7 @@
 
     function playVideoNote(targetVideo) {
         const allVideos = document.querySelectorAll('.video-note');
-        allVideos.forEach(v => {
-            if (v !== targetVideo) { v.pause(); v.currentTime = 0; }
-        });
-
+        allVideos.forEach(v => { if (v !== targetVideo) { v.pause(); v.currentTime = 0; } });
         if (targetVideo.paused) { targetVideo.play(); } else { targetVideo.pause(); }
     }
 
@@ -512,33 +743,17 @@
         input.value = '';
         onInputChange();
 
-        const msgObj = {
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            text: text,
-            created_at: new Date().toISOString()
-        };
-
+        const msgObj = { sender_id: currentUser.id, receiver_id: selectedUser.id, text: text, created_at: new Date().toISOString() };
         renderSingleMessage(msgObj, true);
 
-        await db.from('messages').insert([{
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            text: text
-        }]);
-
+        await db.from('messages').insert([{ sender_id: currentUser.id, receiver_id: selectedUser.id, text: text }]);
         loadActiveChats();
     }
 
     function onInputChange() {
         const text = document.getElementById('msg-input').value.trim();
         const btn = document.getElementById('tg-action-btn');
-
-        if (text.length > 0) {
-            btn.textContent = "➤";
-        } else {
-            btn.textContent = currentMediaMode === 'voice' ? "🎙" : "📹";
-        }
+        if (text.length > 0) { btn.textContent = "➤"; } else { btn.textContent = currentMediaMode === 'voice' ? "🎙" : "📹"; }
     }
 
     function setupTgButtonEvents() {
@@ -552,62 +767,34 @@
 
     function handlePressStart() {
         const text = document.getElementById('msg-input').value.trim();
-        if (text.length > 0) {
-            sendMsg();
-            return;
-        }
+        if (text.length > 0) { sendMsg(); return; }
 
-        pressTimer = setTimeout(() => {
-            isHoldRecording = true;
-            startMediaRecord(currentMediaMode);
-        }, 200);
+        pressTimer = setTimeout(() => { isHoldRecording = true; startMediaRecord(currentMediaMode); }, 200);
     }
 
     function handlePressEnd() {
         clearTimeout(pressTimer);
-
-        if (isHoldRecording) {
-            stopAndSendMedia();
-            isHoldRecording = false;
-        } else {
+        if (isHoldRecording) { stopAndSendMedia(); isHoldRecording = false; } else {
             const text = document.getElementById('msg-input').value.trim();
-            if (text.length === 0) {
-                currentMediaMode = currentMediaMode === 'voice' ? 'video' : 'voice';
-                onInputChange();
-            }
+            if (text.length === 0) { currentMediaMode = currentMediaMode === 'voice' ? 'video' : 'voice'; onInputChange(); }
         }
     }
 
-    // 🎙 СБОРКА ИДЕАЛЬНОГО WAV ФАЙЛА
     function encodeWAV(samples, sampleRate) {
         const buffer = new ArrayBuffer(44 + samples.length * 2);
         const view = new DataView(buffer);
-
-        /* RIFF identifier */
         writeString(view, 0, 'RIFF');
-        /* RIFF chunk length */
         view.setUint32(4, 36 + samples.length * 2, true);
-        /* RIFF type */
         writeString(view, 8, 'WAVE');
-        /* format chunk identifier */
         writeString(view, 12, 'fmt ');
-        /* format chunk length */
         view.setUint32(16, 16, true);
-        /* sample format (raw) */
         view.setUint16(20, 1, true);
-        /* channel count (mono) */
         view.setUint16(22, 1, true);
-        /* sample rate */
         view.setUint32(24, sampleRate, true);
-        /* byte rate */
         view.setUint32(28, sampleRate * 2, true);
-        /* block align */
         view.setUint16(32, 2, true);
-        /* bits per sample */
         view.setUint16(34, 16, true);
-        /* data chunk identifier */
         writeString(view, 36, 'data');
-        /* data chunk length */
         view.setUint32(40, samples.length * 2, true);
 
         let offset = 44;
@@ -619,9 +806,7 @@
     }
 
     function writeString(view, offset, string) {
-        for (let i = 0; i < string.length; i++) {
-            view.setUint8(offset + i, string.charCodeAt(i));
-        }
+        for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); }
     }
 
     async function startMediaRecord(type) {
@@ -629,11 +814,7 @@
 
         try {
             cleanupMediaStream();
-
-            const constraints = type === 'video' 
-                ? { video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: true }
-                : { audio: true };
-
+            const constraints = type === 'video' ? { video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: true } : { audio: true };
             mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
             if (type === 'video') {
@@ -651,7 +832,6 @@
                 document.getElementById('voice-viz-wrap').style.display = 'block';
                 document.getElementById('rec-title').textContent = "Запись голосового";
 
-                // Подключаем кастомную запись в чистый WAV через WebAudio
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 sampleRate = audioCtx.sampleRate;
                 const source = audioCtx.createMediaStreamSource(mediaStream);
@@ -660,8 +840,7 @@
 
                 audioProcessor.onaudioprocess = (e) => {
                     if (!isHoldRecording) return;
-                    const input = e.inputBuffer.getChannelData(0);
-                    pcmBuffers.push(new Float32Array(input));
+                    pcmBuffers.push(new Float32Array(e.inputBuffer.getChannelData(0)));
                 };
 
                 source.connect(audioProcessor);
@@ -682,15 +861,10 @@
                 const secStr = recordTimeLeft < 10 ? '0' + recordTimeLeft : recordTimeLeft;
                 document.getElementById('rec-timer').textContent = `0:${secStr}`;
 
-                if (recordTimeLeft <= 0) {
-                    stopAndSendMedia();
-                }
+                if (recordTimeLeft <= 0) { stopAndSendMedia(); }
             }, 1000);
 
-        } catch (err) {
-            cleanupMediaStream();
-            alert("Не удалось запустить запись: " + err.message);
-        }
+        } catch (err) { cleanupMediaStream(); alert("Не удалось запустить запись: " + err.message); }
     }
 
     async function stopAndSendMedia() {
@@ -705,23 +879,14 @@
             };
             mediaRecorder.stop();
         } else {
-            if (audioProcessor) {
-                audioProcessor.disconnect();
-                audioProcessor = null;
-            }
-            if (audioCtx) {
-                audioCtx.close();
-                audioCtx = null;
-            }
+            if (audioProcessor) { audioProcessor.disconnect(); audioProcessor = null; }
+            if (audioCtx) { audioCtx.close(); audioCtx = null; }
 
             let totalLen = 0;
             for (let b of pcmBuffers) totalLen += b.length;
             const flatSamples = new Float32Array(totalLen);
             let offset = 0;
-            for (let b of pcmBuffers) {
-                flatSamples.set(b, offset);
-                offset += b.length;
-            }
+            for (let b of pcmBuffers) { flatSamples.set(b, offset); offset += b.length; }
 
             const wavBuffer = encodeWAV(flatSamples, sampleRate);
             const blob = new Blob([wavBuffer], { type: 'audio/wav' });
@@ -731,38 +896,21 @@
 
     async function uploadAndSendMedia(blob, mimeType, bucket, prefix, durationSuffix) {
         const fileName = `rec_${Date.now()}.${bucket === 'videos' ? 'webm' : 'wav'}`;
-
         const localUrl = URL.createObjectURL(blob);
-        renderSingleMessage({
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            text: `${prefix}${localUrl}${durationSuffix}`,
-            created_at: new Date().toISOString()
-        }, true);
 
+        renderSingleMessage({ sender_id: currentUser.id, receiver_id: selectedUser.id, text: `${prefix}${localUrl}${durationSuffix}`, created_at: new Date().toISOString() }, true);
         cancelMedia();
 
-        const { data, error } = await db.storage.from(bucket).upload(fileName, blob, {
-            contentType: mimeType
-        });
+        const { data, error } = await db.storage.from(bucket).upload(fileName, blob, { contentType: mimeType });
         if (error) return console.error("Ошибка загрузки:", error);
 
         const { data: { publicUrl } } = db.storage.from(bucket).getPublicUrl(fileName);
-
-        await db.from('messages').insert([{
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            text: `${prefix}${publicUrl}${durationSuffix}`
-        }]);
-
+        await db.from('messages').insert([{ sender_id: currentUser.id, receiver_id: selectedUser.id, text: `${prefix}${publicUrl}${durationSuffix}` }]);
         loadActiveChats();
     }
 
     function cleanupMediaStream() {
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(track => track.stop());
-            mediaStream = null;
-        }
+        if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
     }
 
     function cancelMedia() {
@@ -775,9 +923,7 @@
     function listenMessages() {
         db.channel('public:messages')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                if (selectedUser && payload.new.sender_id === selectedUser.id) {
-                    renderSingleMessage(payload.new, true);
-                }
+                if (selectedUser && payload.new.sender_id === selectedUser.id) { renderSingleMessage(payload.new, true); }
                 loadActiveChats();
             })
             .subscribe();
@@ -787,9 +933,7 @@
 
     function openSelectedUserProfile() {
         if (!selectedUser) return;
-        db.from('profiles').select('*').eq('id', selectedUser.id).single().then(({ data }) => {
-            if (data) showProfileModal(data, false);
-        });
+        db.from('profiles').select('*').eq('id', selectedUser.id).single().then(({ data }) => { if (data) showProfileModal(data, false); });
     }
 
     function showProfileModal(profile, isOwner) {
@@ -801,9 +945,7 @@
         if (isOwner) {
             document.getElementById('edit-display-name').value = profile.display_name || '';
             editSection.style.display = 'flex';
-        } else {
-            editSection.style.display = 'none';
-        }
+        } else { editSection.style.display = 'none'; }
 
         document.getElementById('profile-modal').style.display = 'flex';
     }
@@ -824,11 +966,7 @@
             });
         }
 
-        await db.from('profiles').update({
-            display_name: newName,
-            avatar_url: avatarBase64
-        }).eq('id', currentUser.id);
-
+        await db.from('profiles').update({ display_name: newName, avatar_url: avatarBase64 }).eq('id', currentUser.id);
         closeProfile();
         await loadProfile();
     }
