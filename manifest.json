@@ -1,0 +1,22 @@
+{
+  "name": "Telegram Web",
+  "short_name": "Telegram",
+  "description": "Мой веб-мессенджер в стиле Telegram",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0e1621",
+  "theme_color": "#17212b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2111/2111646.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
